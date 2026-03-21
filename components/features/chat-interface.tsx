@@ -393,6 +393,12 @@ export function ChatInterface({ chatId }: ChatInterfaceProps) {
   );
 }
 
+interface PaperFigure {
+  url: string;
+  caption: string;
+  label: string;
+}
+
 function CitationPanelContent({
   citation,
   onClose,
@@ -406,18 +412,23 @@ function CitationPanelContent({
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [showEn, setShowEn] = useState<Record<number, boolean>>({});
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [figures, setFigures] = useState<PaperFigure[]>([]);
+  const [figureIdx, setFigureIdx] = useState(0);
 
   useEffect(() => {
     if (!citation.arxivId) return;
     setEnriched(null);
     setShowEn({});
     setSummaryOpen(false);
+    setFigures([]);
+    setFigureIdx(0);
     setEnrichLoading(true);
 
     const snippets = (citation.chunkContents ?? [])
       .map(c => c.content ?? '')
       .filter(Boolean);
 
+    // メタデータ取得
     fetch('/api/citation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -427,6 +438,14 @@ function CitationPanelContent({
       .then((data: EnrichedCitation) => setEnriched(data))
       .catch(() => {/* サイレント失敗 */})
       .finally(() => setEnrichLoading(false));
+
+    // 代表図を取得（非同期・失敗しても問題なし）
+    fetch(`/api/paper-figures?arxivId=${encodeURIComponent(citation.arxivId)}`)
+      .then(r => r.json())
+      .then((data: { figures: PaperFigure[] }) => {
+        if (data.figures?.length) setFigures(data.figures);
+      })
+      .catch(() => {/* サイレント失敗 */});
   }, [citation.arxivId, citation.chunkContents]);
 
   const snippetsToShow = enriched?.translatedSnippets.length
@@ -494,6 +513,51 @@ function CitationPanelContent({
             </div>
           )}
         </div>
+
+        {/* 代表図 */}
+        {figures.length > 0 && (
+          <div className="space-y-2">
+            <div className="relative bg-black/30 rounded-xl overflow-hidden border border-purple-500/10"
+              style={{ minHeight: '120px' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={figures[figureIdx]?.url}
+                alt={figures[figureIdx]?.caption}
+                className="w-full object-contain max-h-56"
+                loading="lazy"
+                onError={e => {
+                  // 画像が読み込めない場合はその図をスキップ
+                  const next = figures.filter((_, i) => i !== figureIdx);
+                  if (next.length) {
+                    setFigures(next);
+                    setFigureIdx(0);
+                  } else {
+                    setFigures([]);
+                  }
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+              {/* 複数図がある場合のナビゲーション */}
+              {figures.length > 1 && (
+                <div className="absolute bottom-2 right-2 flex gap-1">
+                  {figures.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setFigureIdx(i)}
+                      className={`w-1.5 h-1.5 rounded-full transition-colors
+                        ${i === figureIdx ? 'bg-purple-300' : 'bg-purple-500/30 hover:bg-purple-400/50'}`}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+            {figures[figureIdx]?.caption && (
+              <p className="text-purple-400/50 text-xs leading-relaxed line-clamp-2">
+                {figures[figureIdx].caption}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* 引用箇所（最重要：なぜ引用されたか） */}
         {snippetsToShow.length > 0 && (
