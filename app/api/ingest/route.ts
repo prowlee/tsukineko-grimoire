@@ -3,6 +3,7 @@ import { verifyAndGetUser } from '@/lib/auth-helpers';
 import { getAdminFirestore, FieldValue } from '@/lib/firebase-admin';
 import { translateToJapanese } from '@/lib/translate';
 import { pdfToMarkdown } from '@/lib/pdf-to-markdown';
+import { fetchArxivHtmlAsMarkdown } from '@/lib/html-to-markdown';
 
 const MAX_SIZE_MB = parseInt(process.env.MAX_UPLOAD_SIZE_MB ?? '100', 10);
 const ALLOWED_TYPES = ['application/pdf', 'text/markdown', 'text/plain', 'text/x-markdown'];
@@ -125,10 +126,10 @@ export async function POST(req: Request) {
 
     const gcsPath = `gs://${process.env.GCS_BUCKET_NAME}/${destination}`;
 
-    // 5. PDF の場合は Markdown に変換して GCS に保存（Agent Builder 検索精度向上）
+    // 5. PDF の場合は HTML 優先で Markdown に変換して GCS に保存（失敗時は PDF フォールバック）
     if (mimeType === 'application/pdf' && arxivId) {
       try {
-        const markdown = await pdfToMarkdown(buffer, {
+        const paperMeta = {
           title: meta.title,
           authors: meta.authors,
           category: meta.category,
@@ -136,11 +137,17 @@ export async function POST(req: Request) {
           arxivId,
           summary: meta.summary,
           summaryJa,
-        });
+        };
+        let markdown = await fetchArxivHtmlAsMarkdown(arxivId, paperMeta);
+        const source = markdown ? 'html' : 'pdf';
+        if (!markdown) {
+          markdown = await pdfToMarkdown(buffer, paperMeta);
+        }
         const mdDestination = destination.replace(/\.pdf$/i, '.md');
         await bucket.file(mdDestination).save(Buffer.from(markdown, 'utf-8'), {
           metadata: { contentType: 'text/markdown' },
         });
+        console.log(`ingest: markdown source=${source} for ${arxivId}`);
       } catch (mdErr) {
         console.warn('Markdown generation failed:', (mdErr as Error).message?.slice(0, 80));
       }

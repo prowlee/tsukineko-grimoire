@@ -227,7 +227,8 @@ tsukineko-grimoire/
 │   ├── auth-helpers.ts         # 認証ヘルパー
 │   ├── vertex-discovery.ts     # Agent Builder クライアント（シングルトン）
 │   ├── translate.ts            # Cloud Translation API（JA↔EN）
-│   ├── pdf-to-markdown.ts      # PDF→Markdown 変換
+│   ├── pdf-to-markdown.ts      # PDF→Markdown 変換（pdf-parse v2 クラス API 対応）
+│   ├── html-to-markdown.ts     # arXiv HTML版→Markdown 変換（cheerio、PDF より高精度）
 │   ├── semantic-scholar.ts     # 被引用数取得
 │   └── query-cache.ts          # クエリキャッシュ
 ├── scripts/
@@ -368,6 +369,21 @@ gcloud run deploy tsukineko-grimoire \
 **判断**: デフォルトの検索対象を「タイトル（英日両方）」に絞り、「詳細検索」トグルをオンにした場合のみ要約・著者も検索する。
 
 **理由**: "RAG" のような汎用的なキーワードで全文検索すると、タイトルに含まれない論文（アブストラクトで RAG に言及しているだけ）が大量ヒットして本当に探したい論文が埋もれてしまう。タイトル検索を基本とすることで「その論文が主に扱っているテーマ」での絞り込みになり、ノイズを大幅に減らせる。要約まで広げたい場合はトグルで明示的に切り替えられるため、UX の柔軟性も損なわない。
+
+---
+
+### 13. arXiv HTML 版を優先インデックス（PDF フォールバック付き）
+
+**判断**: 論文の Markdown 生成において `https://arxiv.org/html/{arxivId}` を優先取得し、HTML 版が存在しない場合のみ PDF テキスト抽出（`pdf-parse`）にフォールバックする。新規収集（`collector`）・手動アップロード（`ingest`）・既存論文の再インデックス（`admin/reindex`）すべてで同じ方針を適用。過去分は `/api/admin/reindex` に `mode=html` オプションを追加して一括アップグレード可能。処理済みフラグ（`htmlIndexed: 'html' | 'pdf'`）を Firestore に保存し、重複処理を防ぐ。
+
+**理由**: PDF テキスト抽出（`pdf-parse`）には以下の限界がある：
+- LaTeX → PDF の変換で数式が文字化けする
+- 2段組レイアウトで左右の文が混在する
+- セクション見出しが本文と区別できない
+
+arXiv HTML 版（2022年以降の論文で広くカバー）は LaTeX ソースから直接生成されるため、セクション構造・数式（alttext として LaTeX 保持）・著者情報が正確に取れる。`cheerio` で本文を抽出し、既存の Markdown ヘッダー（日本語概要・Abstract）を先頭に付与して GCS に保存することで、Agent Builder の検索精度が向上する。HTML 版がない古い論文は PDF にフォールバックするため、後方互換性を損なわない。
+
+また、`pdf-parse` のメジャーバージョンアップ（v1 関数 API → v2 クラス `PDFParse` API）への対応も同時に実施した。
 
 ---
 

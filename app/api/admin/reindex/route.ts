@@ -1,20 +1,28 @@
 /**
  * /api/admin/reindex
  *
- * Firestore の documents コレクションにある既存 PDF を GCS から取得し、
- * Markdown に変換して同じバケットに保存する。
- * Agent Builder は GCS の変更を自動検知してインデックスを更新する。
+ * Firestore の documents コレクションにある既存 PDF を対象に Markdown を再生成し、
+ * GCS に保存する。Agent Builder は GCS の変更を自動検知してインデックスを更新する。
+ *
+ * モード:
+ *   mode=html  (デフォルト) : arXiv HTML 版を優先取得、失敗時は PDF にフォールバック
+ *   mode=pdf               : PDF テキスト抽出のみ（HTML を使わない）
  *
  * Usage:
  *   curl -X POST http://localhost:3002/api/admin/reindex \
  *     -H "Authorization: Bearer local-dev-secret" \
  *     -H "Content-Type: application/json" \
- *     -d '{"limit": 10}'   # 一度に処理する件数（省略時: 10）
+ *     -d '{"limit": 10, "mode": "html"}'
+ *
+ * 過去分の一括アップグレード:
+ *   htmlIndexed フラグがない（または false の）論文を対象にして繰り返し呼び出す。
+ *   {"limit": 20, "mode": "html", "onlyNotHtmlIndexed": true}
  */
 
 import { Storage } from '@google-cloud/storage';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { pdfToMarkdown } from '@/lib/pdf-to-markdown';
+import { fetchArxivHtmlAsMarkdown } from '@/lib/html-to-markdown';
 
 function isAuthorized(req: Request): boolean {
   if (req.headers.get('x-cloudscheduler-jobname')) return true;
@@ -29,43 +37,43 @@ export async function POST(req: Request) {
   }
 
   let batchLimit = 10;
+  let mode: 'html' | 'pdf' = 'html';
+  let onlyNotHtmlIndexed = false;
+
   try {
-    const body = await req.json() as { limit?: number };
+    const body = await req.json() as { limit?: number; mode?: string; onlyNotHtmlIndexed?: boolean };
     if (typeof body.limit === 'number') batchLimit = Math.min(body.limit, 50);
+    if (body.mode === 'pdf') mode = 'pdf';
+    if (body.onlyNotHtmlIndexed === true) onlyNotHtmlIndexed = true;
   } catch { /* body なし */ }
 
   const db = getAdminFirestore();
   const storage = new Storage();
   const bucket = storage.bucket(process.env.GCS_BUCKET_NAME!);
 
-  // Markdown 未生成のドキュメントを取得
-  // （mdGenerated フラグがない = 未変換）
-  const snapshot = await db
-    .collection('documents')
-    .where('mimeType', '==', 'application/pdf')
-    .where('mdGenerated', '==', false)
-    .limit(batchLimit)
-    .get();
-
-  // mdGenerated フィールドがないドキュメントも対象にするため、
-  // フィールドなしのものを追加で取得
+  // 対象ドキュメントを取得
+  // onlyNotHtmlIndexed=true の場合は htmlIndexed フラグが未設定 or false のものを優先
   const snapshotNoFlag = await db
     .collection('documents')
     .where('mimeType', '==', 'application/pdf')
-    .limit(batchLimit * 2)
+    .limit(batchLimit * 3)
     .get();
 
   const processed = new Set<string>();
-  const targets = [
-    ...snapshot.docs,
-    ...snapshotNoFlag.docs.filter(d => d.data().mdGenerated === undefined),
-  ].filter(doc => {
-    if (processed.has(doc.id)) return false;
-    processed.add(doc.id);
-    return true;
-  }).slice(0, batchLimit);
+  const targets = snapshotNoFlag.docs
+    .filter(doc => {
+      if (processed.has(doc.id)) return false;
+      processed.add(doc.id);
+      const d = doc.data();
+      if (onlyNotHtmlIndexed) {
+        // htmlIndexed が 'html' または 'pdf'（処理済み）のものはスキップ
+        return d.htmlIndexed !== 'html' && d.htmlIndexed !== 'pdf';
+      }
+      return true;
+    })
+    .slice(0, batchLimit);
 
-  const results: Array<{ id: string; arxivId: string; status: string }> = [];
+  const results: Array<{ id: string; arxivId: string; status: string; source?: string }> = [];
   let converted = 0;
   let skipped = 0;
   let errors = 0;
@@ -81,26 +89,12 @@ export async function POST(req: Request) {
       continue;
     }
 
-    // gs://bucket/path/to/file.pdf → path/to/file.pdf
     const bucketName = process.env.GCS_BUCKET_NAME!;
     const filePath = gcsPath.replace(`gs://${bucketName}/`, '');
     const mdPath = filePath.replace(/\.pdf$/i, '.md');
 
     try {
-      // すでに Markdown が存在するか確認
-      const [mdExists] = await bucket.file(mdPath).exists();
-      if (mdExists) {
-        await doc.ref.update({ mdGenerated: true });
-        results.push({ id: doc.id, arxivId, status: 'skipped (md already exists)' });
-        skipped++;
-        continue;
-      }
-
-      // GCS から PDF を取得
-      const [pdfBuffer] = await bucket.file(filePath).download();
-
-      // Markdown 変換
-      const markdown = await pdfToMarkdown(Buffer.from(pdfBuffer), {
+      const paperMeta = {
         title: data.title ?? '',
         authors: data.authors ?? [],
         category: data.category ?? '',
@@ -108,21 +102,42 @@ export async function POST(req: Request) {
         arxivId,
         summary: data.summary ?? '',
         summaryJa: data.summaryJa ?? '',
-      });
+      };
 
-      // GCS に Markdown を保存
+      let markdown: string | null = null;
+      let source: 'html' | 'pdf' = 'pdf';
+
+      if (mode === 'html' && arxivId) {
+        // HTML 版を試みる（arXiv に 3 秒インターバルは呼び出し側で考慮）
+        markdown = await fetchArxivHtmlAsMarkdown(arxivId, paperMeta);
+        if (markdown) source = 'html';
+      }
+
+      if (!markdown) {
+        // HTML なし・PDF モード：GCS から PDF を取得してテキスト抽出
+        const [pdfBuffer] = await bucket.file(filePath).download();
+        markdown = await pdfToMarkdown(Buffer.from(pdfBuffer), paperMeta);
+        source = 'pdf';
+      }
+
+      // GCS に Markdown を保存（上書き）
       await bucket.file(mdPath).save(Buffer.from(markdown, 'utf-8'), {
         metadata: { contentType: 'text/markdown' },
       });
 
-      // Firestore に変換済みフラグを付与
-      await doc.ref.update({ mdGenerated: true });
+      // Firestore にフラグを更新
+      // htmlIndexed: 'html' | 'pdf' の文字列で区別し、どちらでも処理済みとして扱う
+      await doc.ref.update({
+        mdGenerated: true,
+        htmlIndexed: source, // 'html' または 'pdf'
+        htmlIndexedAt: new Date().toISOString(),
+      });
 
       converted++;
-      results.push({ id: doc.id, arxivId, status: 'converted' });
+      results.push({ id: doc.id, arxivId, status: 'converted', source });
 
-      // GCS への連続書き込みに少し間隔を空ける
-      await new Promise(r => setTimeout(r, 200));
+      // arXiv への連続リクエストを避けるため少し待機
+      await new Promise(r => setTimeout(r, mode === 'html' ? 3000 : 200));
     } catch (err) {
       console.error(`reindex error for ${doc.id} (${arxivId}):`, (err as Error).message?.slice(0, 100));
       errors++;
@@ -130,8 +145,8 @@ export async function POST(req: Request) {
     }
   }
 
-  console.log(`reindex: converted=${converted}, skipped=${skipped}, errors=${errors}`);
-  return Response.json({ converted, skipped, errors, total: targets.length, results });
+  console.log(`reindex(mode=${mode}): converted=${converted}, skipped=${skipped}, errors=${errors}`);
+  return Response.json({ mode, converted, skipped, errors, total: targets.length, results });
 }
 
 export const GET = POST;

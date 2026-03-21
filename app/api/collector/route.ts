@@ -4,6 +4,7 @@ import { Storage } from '@google-cloud/storage';
 import { getAdminFirestore, FieldValue } from '@/lib/firebase-admin';
 import { translateToJapanese } from '@/lib/translate';
 import { pdfToMarkdown } from '@/lib/pdf-to-markdown';
+import { fetchArxivHtmlAsMarkdown } from '@/lib/html-to-markdown';
 import { getCitationCount } from '@/lib/semantic-scholar';
 import type * as FirebaseFirestore from '@google-cloud/firestore';
 
@@ -203,16 +204,22 @@ export async function POST(req: Request) {
         const summaryJa = await translateToJapanese(summary);
         const titleJa = await translateToJapanese(title);
 
-        // 7. PDF → Markdown 変換して GCS に保存（Agent Builder 検索精度向上）
+        // 7. HTML 優先で Markdown 変換して GCS に保存（失敗時は PDF フォールバック）
         const mdFilename = filename.replace(/\.pdf$/, '.md');
         const mdDestination = `incoming/${mdFilename}`;
+        const paperMeta = { title, authors, category, publishedAt, arxivId, summary, summaryJa };
         try {
-          const markdown = await pdfToMarkdown(pdfBuffer, {
-            title, authors, category, publishedAt, arxivId, summary, summaryJa,
-          });
+          // HTML 版（arXiv HTML）を試みる
+          let markdown = await fetchArxivHtmlAsMarkdown(arxivId, paperMeta);
+          const source = markdown ? 'html' : 'pdf';
+          if (!markdown) {
+            // HTML なし・失敗時は PDF テキスト抽出にフォールバック
+            markdown = await pdfToMarkdown(pdfBuffer, paperMeta);
+          }
           await bucket.file(mdDestination).save(Buffer.from(markdown, 'utf-8'), {
             metadata: { contentType: 'text/markdown' },
           });
+          console.log(`collector: markdown source=${source} for ${arxivId}`);
         } catch (mdErr) {
           console.warn(`Markdown generation failed for ${arxivId}:`, (mdErr as Error).message?.slice(0, 80));
         }
@@ -322,15 +329,19 @@ async function handleSingleById(
     });
     const gcsPath = `gs://${process.env.GCS_BUCKET_NAME}/${destination}`;
 
-    // PDF → Markdown 変換して GCS に保存（Agent Builder 検索精度向上）
+    // HTML 優先で Markdown 変換して GCS に保存（失敗時は PDF フォールバック）
     try {
-      const markdown = await pdfToMarkdown(pdfBuffer, {
-        title, authors, category, publishedAt, arxivId: cleanId, summary, summaryJa,
-      });
+      const paperMeta = { title, authors, category, publishedAt, arxivId: cleanId, summary, summaryJa };
+      let markdown = await fetchArxivHtmlAsMarkdown(cleanId, paperMeta);
+      const source = markdown ? 'html' : 'pdf';
+      if (!markdown) {
+        markdown = await pdfToMarkdown(pdfBuffer, paperMeta);
+      }
       const mdDestination = `incoming/${filename.replace(/\.pdf$/, '.md')}`;
       await bucket.file(mdDestination).save(Buffer.from(markdown, 'utf-8'), {
         metadata: { contentType: 'text/markdown' },
       });
+      console.log(`collector(byId): markdown source=${source} for ${cleanId}`);
     } catch (mdErr) {
       console.warn(`Markdown generation failed for ${cleanId}:`, (mdErr as Error).message?.slice(0, 80));
     }

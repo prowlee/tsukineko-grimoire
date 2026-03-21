@@ -1,9 +1,10 @@
-// pdf-parse は ESM デフォルトエクスポートを持たないため require を使用
+// pdf-parse v2 は PDFParse クラスを export する（旧バージョンの関数 API から変更）
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require('pdf-parse') as (
-  dataBuffer: Buffer,
-  options?: object
-) => Promise<{ text: string; numpages: number }>;
+const { PDFParse } = require('pdf-parse') as {
+  PDFParse: new (options: { data: Buffer }) => {
+    getText(): Promise<{ text: string }>;
+  };
+};
 
 export interface PaperMetadata {
   title: string;
@@ -27,14 +28,8 @@ export async function pdfToMarkdown(
   let bodyText = '';
 
   try {
-    const parsed = await pdfParse(pdfBuffer, {
-      // ページ区切りを改行2つに変換
-      pagerender: (pageData) => {
-        return pageData.getTextContent().then((textContent: { items: Array<{ str: string }> }) => {
-          return textContent.items.map((item) => item.str).join(' ');
-        });
-      },
-    });
+    const parser = new PDFParse({ data: pdfBuffer });
+    const parsed = await parser.getText();
     bodyText = cleanPdfText(parsed.text);
   } catch (err) {
     console.warn('pdf-parse failed, using metadata-only markdown:', (err as Error).message?.slice(0, 80));
