@@ -281,20 +281,12 @@ Write in precise, academic Japanese suitable for a researcher.`,
       return { title, uri, arxivId, chunkContents };
     }).filter(c => c.uri);
 
-    // 結果なし検知：サジェストを生成して返す
+    // 結果なし検知
     const NO_RESULTS_PATTERN = /no results|結果が見つかりません|try rephrasing|検索語句を修正/i;
     if (NO_RESULTS_PATTERN.test(answer) || answer.trim() === '') {
-      // キーワード抽出（括弧・記号を除いたコア部分）
       const keyword = question.replace(/[「」『』【】\(\)（）]/g, '').trim().slice(0, 30);
 
-      // テンプレートサジェスト
-      const suggestions = [
-        `${keyword}とは何か`,
-        `${keyword}の仕組みを教えて`,
-        `${keyword}に関連する研究`,
-      ];
-
-      // Firestore から関連論文を検索（titleJa or title にキーワード含む）
+      // Firestore から関連論文を検索（実際に存在するものだけ表示）
       const db = getAdminFirestore();
       const [byTitleJa, byTitle] = await Promise.all([
         db.collection('documents')
@@ -327,8 +319,12 @@ Write in precise, academic Japanese suitable for a researcher.`,
         }
       }
 
-      const fallbackAnswer = `「${keyword}」に関する情報が知識ベースで見つかりませんでした。\n\nこんな質問はいかがですか？`;
-      return Response.json({ answer: fallbackAnswer, citations: [], suggestions, relatedDocs });
+      // テンプレートサジェストは表示しない（知識がないのにあるように見せない）
+      const hasRelated = relatedDocs.length > 0;
+      const fallbackAnswer = hasRelated
+        ? `「${keyword}」についての情報はこの知識ベースには含まれていません。\n\nタイトルが近い論文が見つかりました。参考にどうぞ：`
+        : `「${keyword}」についての情報はこの知識ベースには含まれていません。\n\nこのグリモワールは AI・機械学習分野の arXiv 論文を対象としています。RAG、Transformer、LLM、拡散モデルなどについて質問してみてください。`;
+      return Response.json({ answer: fallbackAnswer, citations: [], suggestions: [], relatedDocs });
     }
 
     const result = { answer, citations };
