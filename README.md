@@ -15,8 +15,10 @@ Google Cloud "Trial credit for GenAI App Builder" ($1,000) を活用。
 | 📚 **Archive（書庫）** | 収集済み論文の一覧表示・カテゴリ絞り込み・検索 |
 | ⬆️ **Upload（取り込み）** | PDF・Markdown を手動アップロード |
 | 🛰️ **Auto Collector** | arXiv から AI/ML 論文を自動収集（被引用数フィルタ付き） |
-| 🌐 **日本語翻訳** | abstract を自動で日本語翻訳して保存 |
+| 🌐 **日本語翻訳** | タイトル・abstract を自動で日本語翻訳して保存 |
 | 📄 **PDF→Markdown 変換** | 検索精度向上のため PDF をメタデータ注入型 Markdown に変換 |
+| 🔍 **テキスト選択で深掘り** | 回答文を選択するとその箇所を即座に深掘り検索できる |
+| 📎 **Citation Preview** | 引用番号クリックで論文の日本語要約・翻訳スニペット・各種リンクを表示 |
 
 ---
 
@@ -124,10 +126,12 @@ WATCHPACK_POLLING=true npm run dev -- --port 3002
 | エンドポイント | メソッド | 説明 |
 |--------------|---------|------|
 | `/api/chat` | POST | RAG チャット（Agent Builder 検索） |
+| `/api/citation` | POST | 引用論文の詳細取得（日本語要約・翻訳スニペット・リンク） |
 | `/api/ingest` | POST | ファイルアップロード（PDF/Markdown） |
 | `/api/collector` | POST | arXiv 論文自動収集 |
 | `/api/admin/sync-status` | POST | Agent Builder インデックス状態を同期 |
 | `/api/admin/reindex` | POST | 既存 PDF を Markdown に変換して再インデックス |
+| `/api/admin/translate-titles` | POST | 既存論文の titleJa を一括翻訳・補完 |
 | `/api/auth/session` | POST/DELETE | セッション Cookie の発行・削除 |
 
 管理系 API は `Authorization: Bearer <CRON_SECRET>` が必要です。
@@ -176,6 +180,17 @@ for i in {1..8}; do
 done
 ```
 
+### 既存論文に日本語タイトルを一括追加
+
+論文タイトルの日本語訳（`titleJa`）が未設定の論文を自動翻訳して Firestore に保存します。
+
+```bash
+# 30件ずつ実行（タイムアウト防止）。remaining が 0 になるまで繰り返す
+curl -s -X POST "http://localhost:3002/api/admin/translate-titles?secret=local-dev-secret" \
+  -H "Content-Type: application/json" \
+  -d '{"batchLimit": 30}' | python3 -m json.tool
+```
+
 ---
 
 ## 📁 プロジェクト構成
@@ -190,15 +205,19 @@ tsukineko-grimoire/
 │   │   │   └── upload/         # アップロードページ
 │   │   └── settings/           # 設定ページ
 │   └── api/
-│       ├── chat/               # RAG チャット API
-│       ├── ingest/             # ファイルアップロード API
-│       ├── collector/          # arXiv 自動収集 API
+│       ├── chat/               # RAG チャット API（クエリタイプ検出・動的プロンプト）
+│       ├── citation/           # 引用詳細 API（日本語要約・スニペット翻訳）
+│       ├── ingest/             # ファイルアップロード API（titleJa 自動翻訳）
+│       ├── collector/          # arXiv 自動収集 API（titleJa 自動翻訳）
 │       ├── admin/
 │       │   ├── sync-status/    # インデックス状態同期
-│       │   └── reindex/        # PDF→Markdown 再変換
+│       │   ├── reindex/        # PDF→Markdown 再変換
+│       │   └── translate-titles/ # titleJa 一括翻訳（バックフィル）
 │       └── auth/session/       # 認証セッション
 ├── components/
 │   ├── features/
+│   │   ├── chat-interface.tsx  # チャット UI（レスポンシブ Citation Preview・Deep Dive）
+│   │   ├── message-bubble.tsx  # メッセージ表示（Markdown・テキスト選択深掘り）
 │   │   ├── archive-library.tsx # 書庫コンポーネント
 │   │   └── file-uploader.tsx   # アップロードコンポーネント
 │   └── main-nav.tsx            # ナビゲーション（モバイル対応）
@@ -239,6 +258,80 @@ gcloud run deploy tsukineko-grimoire \
 ```
 
 シークレット類は [Secret Manager](https://console.cloud.google.com/security/secret-manager) で管理することを推奨します。
+
+---
+
+## 🧠 設計上の工夫と判断メモ
+
+後から履歴を追えるよう、「なぜそうしたか」を記録しておく。
+
+---
+
+### 1. Citation Preview — モーダルからレスポンシブパネルへ
+
+**判断**: 引用番号クリック時の表示をモーダルではなく「デスクトップ：右スライドパネル（幅をドラッグ調整可、最大 60%）」「モバイル：下からせり上がるシート」に変更。
+
+**理由**: モーダルは読み進めながら比較できない。パネルであれば本文と並べて確認でき、論文を複数回クリックしながら読み進めるユースケースに合っている。幅調整は「論文の要約を長く読みたいか、チャットを優先したいか」がユーザーによって違うため。
+
+---
+
+### 2. テキスト選択「深掘り」機能
+
+**判断**: 回答文の一部を選択すると「🔍 この部分を深掘り」ボタンが浮上し、クリックするとその語句だけを Agent Builder へ送信して新しい質問を生成。選択範囲には黄色のアンバー色ハイライト（`selection:bg-amber-400/25`）を付与。
+
+**理由**: 「続けて」のような曖昧なフォローアップは RAG と相性が悪い（どの文脈を引き継ぐか特定できない）。「今読んでいる文章の中で気になった箇所をすぐ検索できる」という UX にすることで、ユーザーが意図を明示しやすくなる。
+
+**技術的なポイント**: `window.getSelection()` で取得したテキストをそのまま Agent Builder に渡すと、自然言語的なフレーズがノイズになる。そのため選択したキーワードのみを検索クエリとし、表示上のメッセージ（「〇〇についてもっと詳しく教えてください」）と実際の検索クエリを分離している。
+
+---
+
+### 3. IME 変換中のエンター送信防止
+
+**判断**: `e.nativeEvent.isComposing` が `true` の間は Enter を押しても送信しない。
+
+**理由**: 日本語 IME で変換候補を選ぶ際に Enter を押すと、そのまま送信されてしまう問題があった。`isComposing` フラグで確定操作と送信操作を区別する。
+
+---
+
+### 4. 動的クエリタイプ検出と応答テンプレートの切り替え
+
+**判断**: ユーザーの質問を 6 種（`overview` / `definition` / `mechanism` / `comparison` / `practical` / `research`）に自動分類し、それぞれに最適化した Markdown テンプレートを Agent Builder の `modelPromptSpec.preamble` に適用。`pageSize` / `summaryResultCount` も動的に変える。
+
+**理由**: 「〜とは？」と「〜の仕組みは？」は知りたいことの粒度が違う。画一的な構造でまとめると、不要なセクションが「情報がありません」で埋まるか、同じことが繰り返されやすい。クエリタイプごとに「必要な見出し」だけを定義することで、余分なセクションを完全に省略できる。
+
+**もう一つの理由（コスト）**: `summaryResultCount` をタイプ別に調整することで、単純な定義質問に 5 件も引かずに済む。
+
+---
+
+### 5. プロンプトを英語で書き、回答は日本語で要求
+
+**判断**: Agent Builder の `preamble` はすべて英語で書き、末尾に「Respond in Japanese」と明示。
+
+**理由**: preamble に日本語を混在させると、Agent Builder が英語の検索結果要約と日本語の指示を交互に処理することになり、出力の自然さが下がる。英語→英語でコンテキストを組み立てた後、日本語出力を要求する方が翻訳品質が安定した。
+
+---
+
+### 6. 会話履歴から AI の日本語応答を除外
+
+**判断**: 会話コンテキストを Agent Builder に渡す際、ユーザーの英語訳クエリのみを含め、AI の前回の日本語応答は含めない（`userOnlyContext`）。
+
+**理由**: AI の日本語応答をそのまま次のクエリのコンテキストとして渡すと、Agent Builder の内部で英語・日本語が混在してしまい、英語の検索インデックスとの整合性が崩れる。純粋にユーザーの意図（英語化したもの）だけを引き継ぐことで言語の汚染を防ぐ。
+
+---
+
+### 7. 結果なし時のフォールバック UI
+
+**判断**: Agent Builder が結果を返せなかった場合、「こんな聞き方はどうですか？」というテンプレートリスト（クリック可能）と、Firestore から関連論文を最大 3 件表示する。
+
+**理由**: 「結果が見つかりませんでした。検索語句を修正してください。」はユーザーを迷わせるだけ。具体的な代替クエリを提示し、しかもクリックで即座に再検索できれば、ユーザーは次の行動を取れる。テンプレートは実際の知識ベースに紐づいているわけではないが、一般的な切り口（「〜とは？」「〜はどのように機能するか？」）を提示することで発見を促せる。
+
+---
+
+### 8. `titleJa`（日本語タイトル）の Firestore 管理
+
+**判断**: 論文の日本語タイトルを `titleJa` フィールドとして Firestore に保存し、新規収集時・手動アップロード時に自動生成。既存論文には管理者 API（`/api/admin/translate-titles`）でバックフィル。
+
+**理由**: Archive（書庫）やフォールバック時の関連論文サジェスト表示において、英語タイトルだけだと日本語ユーザーには読みにくい。翻訳コストを最小化するため、一度翻訳した値を Firestore にキャッシュして再翻訳しない設計にしている。
 
 ---
 
