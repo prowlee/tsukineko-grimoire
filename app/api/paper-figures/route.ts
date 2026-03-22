@@ -12,12 +12,14 @@
  */
 
 import * as cheerio from 'cheerio';
+import { translateToJapanese } from '@/lib/translate';
 
 export const revalidate = 86400; // 24時間キャッシュ
 
 interface Figure {
   url: string;
   caption: string;
+  captionJa: string;
   label: string;
 }
 
@@ -84,7 +86,7 @@ export async function GET(req: Request) {
       const caption = captionEl.text().trim().replace(/\s+/g, ' ').slice(0, 300);
       const label = figure.attr('id') ?? img.attr('id') ?? '';
 
-      allFigures.push({ url, caption, label });
+      allFigures.push({ url, caption, captionJa: '', label });
     });
 
     if (allFigures.length === 0) {
@@ -107,6 +109,18 @@ export async function GET(req: Request) {
 
     // 優先図を先頭に、なければ最初の図を使用（最大 3 件）
     const selected = [...prioritized, ...rest].slice(0, 3);
+
+    // キャプションを日本語に翻訳（失敗しても続行）
+    await Promise.all(
+      selected.map(async fig => {
+        if (!fig.caption) return;
+        try {
+          fig.captionJa = await translateToJapanese(fig.caption);
+        } catch {
+          // 翻訳失敗は無視
+        }
+      })
+    );
 
     return Response.json({ figures: selected });
   } catch {

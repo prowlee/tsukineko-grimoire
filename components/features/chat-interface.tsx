@@ -396,6 +396,7 @@ export function ChatInterface({ chatId }: ChatInterfaceProps) {
 interface PaperFigure {
   url: string;
   caption: string;
+  captionJa: string;
   label: string;
 }
 
@@ -414,6 +415,15 @@ function CitationPanelContent({
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [figures, setFigures] = useState<PaperFigure[]>([]);
   const [figureIdx, setFigureIdx] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+
+  // Escape でライトボックスを閉じる
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightboxOpen(false); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [lightboxOpen]);
 
   useEffect(() => {
     if (!citation.arxivId) return;
@@ -422,6 +432,7 @@ function CitationPanelContent({
     setSummaryOpen(false);
     setFigures([]);
     setFigureIdx(0);
+    setLightboxOpen(false);
     setEnrichLoading(true);
 
     const snippets = (citation.chunkContents ?? [])
@@ -515,49 +526,125 @@ function CitationPanelContent({
         </div>
 
         {/* 代表図 */}
-        {figures.length > 0 && (
-          <div className="space-y-2">
-            <div className="relative bg-black/30 rounded-xl overflow-hidden border border-purple-500/10"
-              style={{ minHeight: '120px' }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={figures[figureIdx]?.url}
-                alt={figures[figureIdx]?.caption}
-                className="w-full object-contain max-h-56"
-                loading="lazy"
-                onError={e => {
-                  // 画像が読み込めない場合はその図をスキップ
-                  const next = figures.filter((_, i) => i !== figureIdx);
-                  if (next.length) {
+        {figures.length > 0 && (() => {
+          const fig = figures[figureIdx];
+          return (
+            <div className="space-y-1.5">
+              {/* サムネイル（クリックで拡大） */}
+              <div
+                className="relative bg-black/30 rounded-xl overflow-hidden border border-purple-500/10
+                  cursor-zoom-in group"
+                style={{ minHeight: '100px' }}
+                onClick={() => setLightboxOpen(true)}
+                title="クリックして拡大"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={fig?.url}
+                  alt={fig?.captionJa || fig?.caption}
+                  className="w-full object-contain max-h-48 transition-opacity group-hover:opacity-90"
+                  loading="lazy"
+                  onError={() => {
+                    const next = figures.filter((_, i) => i !== figureIdx);
                     setFigures(next);
                     setFigureIdx(0);
-                  } else {
-                    setFigures([]);
-                  }
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-              />
-              {/* 複数図がある場合のナビゲーション */}
-              {figures.length > 1 && (
-                <div className="absolute bottom-2 right-2 flex gap-1">
-                  {figures.map((_, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setFigureIdx(i)}
-                      className={`w-1.5 h-1.5 rounded-full transition-colors
-                        ${i === figureIdx ? 'bg-purple-300' : 'bg-purple-500/30 hover:bg-purple-400/50'}`}
-                    />
-                  ))}
+                  }}
+                />
+                {/* 拡大アイコン（ホバー時） */}
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="bg-black/60 text-white text-xs px-2 py-1 rounded-lg">🔍 拡大</span>
                 </div>
+                {/* 複数図ナビ */}
+                {figures.length > 1 && (
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5"
+                    onClick={e => e.stopPropagation()}>
+                    {figures.map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setFigureIdx(i)}
+                        className={`w-1.5 h-1.5 rounded-full transition-colors
+                          ${i === figureIdx ? 'bg-purple-200' : 'bg-purple-500/40 hover:bg-purple-400/60'}`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* キャプション（日本語優先） */}
+              {(fig?.captionJa || fig?.caption) && (
+                <p className="text-purple-400/50 text-xs leading-relaxed line-clamp-2">
+                  {fig.captionJa || fig.caption}
+                </p>
               )}
+
+              {/* ライトボックス */}
+              <AnimatePresence>
+                {lightboxOpen && fig && (
+                  <>
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="fixed inset-0 bg-black/85 z-[200] flex flex-col items-center justify-center p-4"
+                      onClick={() => setLightboxOpen(false)}
+                    >
+                      {/* 閉じるボタン */}
+                      <button
+                        className="absolute top-4 right-4 text-white/60 hover:text-white transition-colors z-10"
+                        onClick={() => setLightboxOpen(false)}
+                      >
+                        <X size={24} />
+                      </button>
+
+                      {/* 画像 */}
+                      <motion.div
+                        initial={{ scale: 0.92, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.92, opacity: 0 }}
+                        transition={{ duration: 0.18 }}
+                        className="max-w-4xl w-full max-h-[75vh] flex flex-col items-center gap-4"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={fig.url}
+                          alt={fig.captionJa || fig.caption}
+                          className="max-w-full max-h-[60vh] object-contain rounded-xl shadow-2xl"
+                        />
+
+                        {/* キャプション */}
+                        {(fig.captionJa || fig.caption) && (
+                          <div className="text-center space-y-1 max-w-2xl">
+                            {fig.captionJa && (
+                              <p className="text-white/90 text-sm leading-relaxed">{fig.captionJa}</p>
+                            )}
+                            {fig.caption && fig.captionJa !== fig.caption && (
+                              <p className="text-white/45 text-xs leading-relaxed italic">{fig.caption}</p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* 複数図ナビ（ライトボックス内） */}
+                        {figures.length > 1 && (
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => setFigureIdx(i => (i - 1 + figures.length) % figures.length)}
+                              className="text-white/50 hover:text-white transition-colors text-lg"
+                            >‹</button>
+                            <span className="text-white/40 text-xs">{figureIdx + 1} / {figures.length}</span>
+                            <button
+                              onClick={() => setFigureIdx(i => (i + 1) % figures.length)}
+                              className="text-white/50 hover:text-white transition-colors text-lg"
+                            >›</button>
+                          </div>
+                        )}
+                      </motion.div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
             </div>
-            {figures[figureIdx]?.caption && (
-              <p className="text-purple-400/50 text-xs leading-relaxed line-clamp-2">
-                {figures[figureIdx].caption}
-              </p>
-            )}
-          </div>
-        )}
+          );
+        })()}
 
         {/* 引用箇所（最重要：なぜ引用されたか） */}
         {snippetsToShow.length > 0 && (
