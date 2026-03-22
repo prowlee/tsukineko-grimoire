@@ -7,6 +7,21 @@ const nextConfig = {
     // Node.js のネイティブ require で動かす（Next.js 14.x）
     serverComponentsExternalPackages: ['pdf-parse', 'pdfjs-dist'],
   },
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            // Firebase signInWithPopup が Google OAuth ポップアップと
+            // 通信できるよう same-origin-allow-popups に緩和する
+            key: 'Cross-Origin-Opener-Policy',
+            value: 'same-origin-allow-popups',
+          },
+        ],
+      },
+    ];
+  },
 };
 
 module.exports = nextConfig;

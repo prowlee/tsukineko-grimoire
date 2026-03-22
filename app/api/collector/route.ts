@@ -6,12 +6,13 @@ import { translateToJapanese } from '@/lib/translate';
 import { pdfToMarkdown } from '@/lib/pdf-to-markdown';
 import { fetchArxivHtmlAsMarkdown } from '@/lib/html-to-markdown';
 import { getCitationCount } from '@/lib/semantic-scholar';
+import { getAdminAuth } from '@/lib/firebase-admin';
 import type * as FirebaseFirestore from '@google-cloud/firestore';
 
 const USER_AGENT = 'Tsukineko-Grimoire/1.0 (arXiv collector; contact via GitHub)';
 
-// Cloud Scheduler または手動実行を認証
-function isAuthorized(req: Request): boolean {
+// Cloud Scheduler または CRON_SECRET による管理者認証
+function isAdminAuthorized(req: Request): boolean {
   if (req.headers.get('x-cloudscheduler-jobname')) return true;
   const auth = req.headers.get('authorization') ?? '';
   const secret = process.env.CRON_SECRET;
@@ -50,10 +51,6 @@ async function downloadWithRetry(url: string, maxRetries = 3): Promise<Buffer> {
 }
 
 export async function POST(req: Request) {
-  if (!isAuthorized(req)) {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
   const db = getAdminFirestore();
 
   // リクエストボディを解析
@@ -70,8 +67,32 @@ export async function POST(req: Request) {
   } catch { /* body なし or 空は無視 */ }
 
   // ── 直接 ID 指定モード ───────────────────────────────────────
+  // ログインユーザーからの単体追加リクエストはセッションクッキー認証でも許可
   if (bodyOverride.arxivId) {
-    return handleSingleById(db, bodyOverride.arxivId);
+    const isAdmin = isAdminAuthorized(req);
+    let sessionUserId: string | null = null;
+    if (!isAdmin) {
+      // /api/collector は middleware の公開パスのため x-session-token が付かない。
+      // Cookie ヘッダーから session を直接読んで検証する。
+      const cookieHeader = req.headers.get('cookie') ?? '';
+      const sessionMatch = cookieHeader.match(/(?:^|;\s*)session=([^;]+)/);
+      const sessionToken = sessionMatch?.[1];
+      if (!sessionToken) {
+        return Response.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      try {
+        const decoded = await getAdminAuth().verifySessionCookie(sessionToken, true);
+        sessionUserId = decoded.uid;
+      } catch {
+        return Response.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+    }
+    return handleSingleById(db, bodyOverride.arxivId, sessionUserId ?? 'system');
+  }
+
+  // バッチ収集モードは管理者のみ
+  if (!isAdminAuthorized(req)) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   // Firestore の設定を読み込む（なければデフォルト値）
@@ -264,7 +285,8 @@ export async function POST(req: Request) {
 // ── arXiv ID 直接指定で1件取得 ────────────────────────────────
 async function handleSingleById(
   db: FirebaseFirestore.Firestore,
-  arxivId: string
+  arxivId: string,
+  userId: string = 'system'
 ): Promise<Response> {
   // 正規化: "2005.11401v3" → "2005.11401"
   const cleanId = arxivId.trim().replace(/v\d+$/, '');
@@ -348,7 +370,7 @@ async function handleSingleById(
 
     // Firestore に登録
     await db.collection('documents').add({
-      userId: 'system',
+      userId,
       filename,
       gcsPath,
       fileSize: pdfBuffer.length,
@@ -356,6 +378,7 @@ async function handleSingleById(
       status: 'pending',
       uploadedAt: FieldValue.serverTimestamp(),
       title,
+      titleJa: await translateToJapanese(title),
       summary,
       summaryJa,
       authors,

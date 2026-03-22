@@ -92,3 +92,104 @@ body {
   background: rgba(124, 58, 237, 0.4);
   color: #f9fafb;
 }
+
+/* ── arXiv LaTeXML 表 ダークテーマ ───────────────────────────────────
+ * .arxiv-table-wrapper 内の LaTeXML 生成 HTML テーブルをアプリのテーマに合わせる
+ * ------------------------------------------------------------------ */
+.arxiv-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* キャプション（ltx_caption / figcaption） */
+.arxiv-table-wrapper figcaption,
+.arxiv-table-wrapper .ltx_caption {
+  display: none; /* コンポーネント側でキャプションを別途描画するため非表示 */
+}
+
+/* テーブル本体 */
+.arxiv-table-wrapper table,
+.arxiv-table-wrapper .ltx_tabular {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+/* セル共通 */
+.arxiv-table-wrapper th,
+.arxiv-table-wrapper td,
+.arxiv-table-wrapper .ltx_td {
+  padding: 4px 10px;
+  color: rgba(233, 213, 255, 0.82);
+  text-align: left;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* ヘッダー行（ltx_thead / ltx_border_t を持つ最初の行） */
+.arxiv-table-wrapper thead th,
+.arxiv-table-wrapper thead td,
+.arxiv-table-wrapper .ltx_thead .ltx_td,
+.arxiv-table-wrapper .ltx_tr:first-child .ltx_td {
+  background: rgba(88, 28, 135, 0.45);
+  font-weight: 600;
+  color: rgba(216, 180, 254, 0.95);
+}
+
+/* ゼブラストライプ */
+.arxiv-table-wrapper tbody tr:nth-child(even),
+.arxiv-table-wrapper .ltx_tbody .ltx_tr:nth-child(even) {
+  background: rgba(88, 28, 135, 0.12);
+}
+
+.arxiv-table-wrapper tbody tr:hover,
+.arxiv-table-wrapper .ltx_tbody .ltx_tr:hover {
+  background: rgba(124, 58, 237, 0.18);
+}
+
+/* LaTeXML border クラス → 薄いボーダーに置き換え */
+.arxiv-table-wrapper .ltx_border_t,
+.arxiv-table-wrapper .ltx_border_b,
+.arxiv-table-wrapper .ltx_border_r,
+.arxiv-table-wrapper .ltx_border_l,
+.arxiv-table-wrapper .ltx_border_tt,
+.arxiv-table-wrapper .ltx_border_bb {
+  border-color: rgba(168, 85, 247, 0.22) !important;
+  border-style: solid;
+}
+.arxiv-table-wrapper .ltx_border_t  { border-top-width: 1px; }
+.arxiv-table-wrapper .ltx_border_tt { border-top-width: 2px; }
+.arxiv-table-wrapper .ltx_border_b  { border-bottom-width: 1px; }
+.arxiv-table-wrapper .ltx_border_bb { border-bottom-width: 2px; }
+.arxiv-table-wrapper .ltx_border_r  { border-right-width: 1px; }
+.arxiv-table-wrapper .ltx_border_l  { border-left-width: 1px; }
+
+/* 太字 */
+.arxiv-table-wrapper .ltx_font_bold,
+.arxiv-table-wrapper b,
+.arxiv-table-wrapper strong {
+  color: rgba(245, 243, 255, 0.97);
+  font-weight: 700;
+}
+
+/* 数値セルを右揃え・等幅に */
+.arxiv-table-wrapper td.ltx_align_right,
+.arxiv-table-wrapper .ltx_align_right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, monospace;
+}
+
+/* LaTeXML の ltx_rule（罫線代替 span）は非表示 */
+.arxiv-table-wrapper .ltx_rule {
+  display: none;
+}
+
+/* 数式は生テキストのままでもフォントを合わせる */
+.arxiv-table-wrapper math,
+.arxiv-table-wrapper .ltx_Math {
+  font-family: ui-monospace, monospace;
+  font-size: 0.68rem;
+  color: rgba(216, 180, 254, 0.8);
+}

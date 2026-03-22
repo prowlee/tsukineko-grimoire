@@ -14,6 +14,26 @@ function stripHtml(text: string): string {
 }
 
 /**
+ * スニペットがメタデータ行（著者名・URL・日付など）である可能性を判定する。
+ * Agent Builder が著者名行を誤抽出した場合に表示から除外するために使用。
+ *
+ * 判定基準：
+ * - 60文字未満の短いテキスト（意味のある引用文としては短すぎる）
+ * - "et al." / "他" を含む著者リストパターン
+ * - **Authors:** / **Published:** / **Source:** などのメタデータキー
+ * - URL のみのテキスト
+ */
+function isMetadataSnippet(text: string): boolean {
+  const t = text.trim();
+  if (!t) return true;
+  if (t.length < 60) return true;
+  if (/et al\.|他$|他\s*$/.test(t)) return true;
+  if (/\*\*(Authors|Published|Category|Source|DOI):\*\*/i.test(t)) return true;
+  if (/^https?:\/\/\S+$/.test(t)) return true;
+  return false;
+}
+
+/**
  * 日本語の連続テキストを段落分けして ReactMarkdown が読みやすいマークダウンに変換。
  * 「。」で文を分割し、2〜3文ごとに改行を挿入する。
  */
@@ -223,17 +243,80 @@ export function ChatInterface({ chatId }: ChatInterfaceProps) {
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="flex flex-col items-center justify-center h-full text-center py-16"
+              className="flex flex-col items-center justify-center h-full py-12 px-6"
             >
               <motion.div
                 animate={{ y: [0, -8, 0] }}
                 transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-                className="text-5xl mb-4"
+                className="text-4xl mb-6"
               >
                 🔮
               </motion.div>
-              <p className="text-purple-200/60 text-lg">魔導書に問いかけてください</p>
-              <p className="text-purple-300/30 text-sm mt-2">
+
+              <div className="w-full max-w-sm space-y-5 text-left">
+                {/* 聞き方のコツ */}
+                <div>
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="flex-1 h-px bg-gradient-to-r from-transparent to-purple-400/20" />
+                    <p className="text-purple-300/50 text-[10px] font-semibold tracking-[0.18em] whitespace-nowrap">聞き方のコツ</p>
+                    <div className="flex-1 h-px bg-gradient-to-l from-transparent to-purple-400/20" />
+                  </div>
+                  <ul className="space-y-2 text-xs">
+                    <li className="flex gap-2 text-purple-200/55">
+                      <span className="shrink-0">✅</span>
+                      <span>論文のタイトルや手法名など、具体的な単語で聞く</span>
+                    </li>
+                    <li className="flex gap-2 text-purple-200/55">
+                      <span className="shrink-0">✅</span>
+                      <span>「〜を比較して」「〜の仕組みを教えて」のように目的を明確に</span>
+                    </li>
+                    <li className="flex gap-2 text-purple-200/40">
+                      <span className="shrink-0">⚠️</span>
+                      <span>曖昧な質問は検索精度が下がるため、キーワードを絞ると◎</span>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* 回答後にできること */}
+                <div>
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="flex-1 h-px bg-gradient-to-r from-transparent to-purple-400/20" />
+                    <p className="text-purple-300/50 text-[10px] font-semibold tracking-[0.18em] whitespace-nowrap">回答後にできること</p>
+                    <div className="flex-1 h-px bg-gradient-to-l from-transparent to-purple-400/20" />
+                  </div>
+                  <ul className="space-y-2 text-xs">
+                    <li className="flex gap-2 text-purple-200/55">
+                      <span className="shrink-0">💬</span>
+                      <span>気になった単語を選択 → そのままさらに深掘り質問</span>
+                    </li>
+                    <li className="flex gap-2 text-purple-200/55">
+                      <span className="shrink-0">📌</span>
+                      <span>引用論文をタップ → 概要・図・実験結果をサイドパネルで表示</span>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* 仕組みと注意点 */}
+                <div>
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="flex-1 h-px bg-gradient-to-r from-transparent to-purple-400/20" />
+                    <p className="text-purple-300/50 text-[10px] font-semibold tracking-[0.18em] whitespace-nowrap">仕組みと注意点</p>
+                    <div className="flex-1 h-px bg-gradient-to-l from-transparent to-purple-400/20" />
+                  </div>
+                  <ul className="space-y-2 text-xs">
+                    <li className="flex gap-2 text-purple-200/40">
+                      <span className="shrink-0">📚</span>
+                      <span>書庫にインデックスした論文のみ回答可能</span>
+                    </li>
+                    <li className="flex gap-2 text-purple-200/40">
+                      <span className="shrink-0">🚫</span>
+                      <span>インデックスにない内容は「情報なし」と返す（ハルシネーション防止）</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <p className="text-purple-300/25 text-xs mt-7">
                 Shift+Enter で改行 / Enter で送信
               </p>
             </motion.div>
@@ -288,7 +371,7 @@ export function ChatInterface({ chatId }: ChatInterfaceProps) {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="魔導書に問いかける... (Enter で送信)"
+            placeholder="ここに質問を入力してください (Enter で送信)"
             rows={1}
             className="magic-input flex-1 px-4 py-2.5 resize-none leading-relaxed
               min-h-[44px] max-h-32 overflow-y-auto"
@@ -400,6 +483,218 @@ interface PaperFigure {
   label: string;
 }
 
+interface ResultTable {
+  caption: string;
+  captionJa: string;
+  /** rowspan/colspan を含む複雑な表 */
+  isComplex?: boolean;
+  /** 複雑な表の生 HTML（アプリ内レンダリング用） */
+  rawHtml?: string;
+  /** 原文確認用の arXiv HTML URL */
+  arxivUrl?: string;
+  headers: string[];
+  rows: string[][];
+}
+
+/**
+ * arXiv HTML の table セルに残る LaTeX 記法や FLOAT タグを除去し、
+ * 人間が読みやすいテキストに変換する。
+ */
+function cleanTableCell(text: string): string {
+  return text
+    // start_FLOAT* / end_FLOAT* タグを除去
+    .replace(/start_FLOAT\w+|end_FLOAT\w+/g, '')
+    // \textsc{...}, \textbf{...} などの LaTeX コマンドを中身だけ残す
+    .replace(/\\[a-zA-Z]+\{([^}]*)\}/g, '$1')
+    // 残留する { } や \ を除去
+    .replace(/[\\{}]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * 数値かどうか判定（先頭が数字または − ならば数値として右揃え）
+ */
+function isNumeric(text: string): boolean {
+  return /^[−\-]?[\d.,]+%?$/.test(text.trim());
+}
+
+/** 折りたたみ高さ（px）— この高さを超える表は展開ボタンを表示 */
+const COMPLEX_TABLE_COLLAPSED_HEIGHT = 260;
+
+/**
+ * 結果表を表示するカード。
+ * - isComplex=true + rawHtml あり → arXiv 生 HTML をダークテーマで描画（高さ制限＋展開）
+ * - isComplex=true + rawHtml なし → キャプション + 原文リンク（フォールバック）
+ * - isComplex=false → ゼブラストライプ + 先頭列 sticky + 数値右揃え（8行折りたたみ）
+ */
+function ResultTableCard({ table }: { table: ResultTable }) {
+  const [expanded, setExpanded] = useState(false);
+  const [rawExpanded, setRawExpanded] = useState(false);
+  const [isTall, setIsTall] = useState(false);
+  const rawWrapperRef = useRef<HTMLDivElement>(null);
+  const PREVIEW_ROWS = 8;
+
+  // rawHtml 表の高さを測定して折りたたみが必要か判定
+  useEffect(() => {
+    if (!rawWrapperRef.current) return;
+    const el = rawWrapperRef.current;
+    const check = () => setIsTall(el.scrollHeight > COMPLEX_TABLE_COLLAPSED_HEIGHT + 20);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [table.rawHtml]);
+
+  const captionText = table.captionJa || table.caption;
+
+  // 複雑な表（rowspan/colspan あり）
+  if (table.isComplex) {
+    // rawHtml があればアプリ内で描画
+    if (table.rawHtml) {
+      return (
+        <div className="rounded-xl border border-purple-500/15 bg-purple-950/20 p-3 space-y-2">
+          {captionText && (
+            <p className="text-purple-300/65 text-xs leading-relaxed">{captionText}</p>
+          )}
+
+          {/* 表本体：高さ制限＋縦スクロール */}
+          <div className="relative">
+            <div
+              ref={rawWrapperRef}
+              className="arxiv-table-wrapper overflow-x-auto transition-[max-height] duration-300 ease-in-out"
+              style={{
+                maxHeight: rawExpanded ? '2400px' : `${COMPLEX_TABLE_COLLAPSED_HEIGHT}px`,
+                overflowY: rawExpanded ? 'visible' : 'hidden',
+              }}
+              dangerouslySetInnerHTML={{ __html: table.rawHtml }}
+            />
+            {/* グラデーションフェード（折りたたみ時） */}
+            {isTall && !rawExpanded && (
+              <div className="absolute bottom-0 inset-x-0 h-12 pointer-events-none
+                bg-gradient-to-t from-[#0f0920] to-transparent rounded-b-lg" />
+            )}
+          </div>
+
+          {/* 展開／折りたたみボタン */}
+          {isTall && (
+            <button
+              onClick={() => setRawExpanded(v => !v)}
+              className="text-xs text-purple-400/65 hover:text-purple-200 transition-colors
+                flex items-center gap-1"
+            >
+              {rawExpanded ? '▲ 折りたたむ' : '▼ 全て表示'}
+            </button>
+          )}
+
+          {table.arxivUrl && (
+            <a
+              href={table.arxivUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-purple-400/40
+                hover:text-purple-300/65 transition-colors"
+            >
+              📄 原文を見る
+            </a>
+          )}
+        </div>
+      );
+    }
+
+    // rawHtml なし（フォールバック）→ 原文リンクのみ
+    return (
+      <div className="rounded-xl border border-purple-500/15 bg-purple-950/20 p-3 space-y-2">
+        {captionText && (
+          <p className="text-purple-300/65 text-xs leading-relaxed">{captionText}</p>
+        )}
+        {table.arxivUrl && (
+          <a
+            href={table.arxivUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs text-purple-400/70
+              hover:text-purple-200 transition-colors underline underline-offset-2"
+          >
+            📄 arXiv HTML で原文を見る
+          </a>
+        )}
+      </div>
+    );
+  }
+
+  const cleanedHeaders = table.headers.map(cleanTableCell);
+  const cleanedRows = table.rows.map(row => row.map(cleanTableCell));
+  const visibleRows = expanded ? cleanedRows : cleanedRows.slice(0, PREVIEW_ROWS);
+  const hasMore = cleanedRows.length > PREVIEW_ROWS;
+
+  return (
+    <div className="space-y-1.5">
+      {captionText && (
+        <p className="text-purple-300/65 text-xs leading-relaxed">{captionText}</p>
+      )}
+      <div className="overflow-x-auto rounded-xl border border-purple-500/15">
+        <table className="w-full text-xs text-left border-collapse">
+          <thead>
+            <tr className="bg-purple-900/50 border-b border-purple-500/20">
+              {cleanedHeaders.map((h, i) => (
+                <th
+                  key={i}
+                  className={`px-2.5 py-2 text-purple-200/85 font-semibold whitespace-nowrap ${
+                    i === 0 ? 'sticky left-0 bg-purple-900/50 z-10' : ''
+                  }`}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {visibleRows.map((row, ri) => (
+              <tr
+                key={ri}
+                className={`border-b border-purple-500/10 last:border-0 hover:bg-purple-800/25 transition-colors ${
+                  ri % 2 === 0 ? 'bg-purple-950/10' : 'bg-purple-900/10'
+                }`}
+              >
+                {row.map((cell, ci) => {
+                  const cleaned = cell || '—';
+                  const numeric = isNumeric(cell);
+                  return (
+                    <td
+                      key={ci}
+                      className={`px-2.5 py-1.5 whitespace-nowrap ${
+                        ci === 0
+                          ? 'sticky left-0 z-10 text-purple-200/80 font-medium ' +
+                            (ri % 2 === 0 ? 'bg-purple-950/80' : 'bg-purple-900/80')
+                          : numeric
+                          ? 'text-right text-purple-100/85 font-mono tabular-nums'
+                          : 'text-purple-200/70'
+                      }`}
+                    >
+                      {cleaned}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {hasMore && (
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="text-purple-500/60 hover:text-purple-300/80 text-xs transition-colors"
+        >
+          {expanded
+            ? `▲ 折りたたむ`
+            : `▼ さらに ${cleanedRows.length - PREVIEW_ROWS} 行を表示`}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function CitationPanelContent({
   citation,
   onClose,
@@ -416,6 +711,7 @@ function CitationPanelContent({
   const [figures, setFigures] = useState<PaperFigure[]>([]);
   const [figureIdx, setFigureIdx] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [resultTables, setResultTables] = useState<ResultTable[]>([]);
 
   // Escape でライトボックスを閉じる
   useEffect(() => {
@@ -433,6 +729,7 @@ function CitationPanelContent({
     setFigures([]);
     setFigureIdx(0);
     setLightboxOpen(false);
+    setResultTables([]);
     setEnrichLoading(true);
 
     const snippets = (citation.chunkContents ?? [])
@@ -450,11 +747,12 @@ function CitationPanelContent({
       .catch(() => {/* サイレント失敗 */})
       .finally(() => setEnrichLoading(false));
 
-    // 代表図を取得（非同期・失敗しても問題なし）
+    // 代表図・結果表を取得（非同期・失敗しても問題なし）
     fetch(`/api/paper-figures?arxivId=${encodeURIComponent(citation.arxivId)}`)
       .then(r => r.json())
-      .then((data: { figures: PaperFigure[] }) => {
+      .then((data: { figures: PaperFigure[]; tables: ResultTable[] }) => {
         if (data.figures?.length) setFigures(data.figures);
+        if (data.tables?.length) setResultTables(data.tables);
       })
       .catch(() => {/* サイレント失敗 */});
   }, [citation.arxivId, citation.chunkContents]);
@@ -484,7 +782,7 @@ function CitationPanelContent({
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
-        {/* Title block */}
+        {/* ── 1. タイトル・著者・カテゴリ ── */}
         <div className="space-y-1.5">
           {enrichLoading && !enriched ? (
             <div className="flex items-center gap-2">
@@ -493,13 +791,11 @@ function CitationPanelContent({
             </div>
           ) : (
             <>
-              {/* 日本語タイトル（常時表示） */}
               {enriched?.titleJa && (
                 <p className="text-purple-100 text-sm font-semibold leading-snug">
                   {enriched.titleJa}
                 </p>
               )}
-              {/* 英語タイトル（常時表示・日本語がある場合はサブ扱い） */}
               <p className={enriched?.titleJa
                 ? 'text-purple-300/60 text-xs leading-snug'
                 : 'text-purple-100 text-sm font-semibold leading-snug'
@@ -508,8 +804,6 @@ function CitationPanelContent({
               </p>
             </>
           )}
-
-          {/* Meta: 著者・年・カテゴリ */}
           {enriched && (
             <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-purple-400/55 text-xs mt-0.5">
               {enriched.authors.length > 0 && (
@@ -525,172 +819,69 @@ function CitationPanelContent({
           )}
         </div>
 
-        {/* 代表図 */}
-        {figures.length > 0 && (() => {
-          const fig = figures[figureIdx];
-          return (
-            <div className="space-y-1.5">
-              {/* サムネイル（クリックで拡大） */}
-              <div
-                className="relative bg-white rounded-xl overflow-hidden border border-purple-500/10
-                  cursor-zoom-in group"
-                style={{ minHeight: '100px' }}
-                onClick={() => setLightboxOpen(true)}
-                title="クリックして拡大"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={fig?.url}
-                  alt={fig?.captionJa || fig?.caption}
-                  className="w-full object-contain max-h-48 transition-opacity group-hover:opacity-90"
-                  loading="lazy"
-                  onError={() => {
-                    const next = figures.filter((_, i) => i !== figureIdx);
-                    setFigures(next);
-                    setFigureIdx(0);
-                  }}
-                />
-                {/* 拡大アイコン（ホバー時） */}
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                  <span className="bg-black/60 text-white text-xs px-2 py-1 rounded-lg">🔍 拡大</span>
-                </div>
-                {/* 複数図ナビ */}
-                {figures.length > 1 && (
-                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5"
-                    onClick={e => e.stopPropagation()}>
-                    {figures.map((_, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setFigureIdx(i)}
-                        className={`w-1.5 h-1.5 rounded-full transition-colors
-                          ${i === figureIdx ? 'bg-purple-200' : 'bg-purple-500/40 hover:bg-purple-400/60'}`}
-                      />
-                    ))}
-                  </div>
-                )}
+        {/* ── 2. 引用箇所（最重要：なぜ引用されたか） ── */}
+        {(() => {
+          // メタデータ行（著者名・URL など）を除外した有効なスニペットのみ表示
+          const validSnippets = snippetsToShow.filter(s => {
+            const en = stripHtml(s.en);
+            const ja = stripHtml(s.ja);
+            return !isMetadataSnippet(en) && !isMetadataSnippet(ja);
+          });
+
+          if (validSnippets.length === 0) {
+            // 有効なスニペットがない場合は「引用元として参照」のみ表示
+            return snippetsToShow.length > 0 ? (
+              <div className="flex items-center gap-2 text-purple-400/50 text-xs">
+                <span>📌</span>
+                <span>この論文が回答の参照元として使用されました。</span>
               </div>
-              {/* キャプション（日本語優先） */}
-              {(fig?.captionJa || fig?.caption) && (
-                <p className="text-purple-400/50 text-xs leading-relaxed line-clamp-2">
-                  {fig.captionJa || fig.caption}
-                </p>
-              )}
+            ) : null;
+          }
 
-              {/* ライトボックス */}
-              <AnimatePresence>
-                {lightboxOpen && fig && (
-                  <>
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="fixed inset-0 bg-black/85 z-[200] flex flex-col items-center justify-center p-4"
-                      onClick={() => setLightboxOpen(false)}
-                    >
-                      {/* 閉じるボタン */}
-                      <button
-                        className="absolute top-4 right-4 text-white/60 hover:text-white transition-colors z-10"
-                        onClick={() => setLightboxOpen(false)}
-                      >
-                        <X size={24} />
-                      </button>
-
-                      {/* 画像 */}
-                      <motion.div
-                        initial={{ scale: 0.92, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        exit={{ scale: 0.92, opacity: 0 }}
-                        transition={{ duration: 0.18 }}
-                        className="max-w-4xl w-full max-h-[75vh] flex flex-col items-center gap-4"
-                        onClick={e => e.stopPropagation()}
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={fig.url}
-                          alt={fig.captionJa || fig.caption}
-                          className="max-w-full max-h-[60vh] object-contain rounded-xl shadow-2xl bg-white p-2"
-                        />
-
-                        {/* キャプション */}
-                        {(fig.captionJa || fig.caption) && (
-                          <div className="text-center space-y-1 max-w-2xl">
-                            {fig.captionJa && (
-                              <p className="text-white/90 text-sm leading-relaxed">{fig.captionJa}</p>
-                            )}
-                            {fig.caption && fig.captionJa !== fig.caption && (
-                              <p className="text-white/45 text-xs leading-relaxed italic">{fig.caption}</p>
-                            )}
-                          </div>
+          return (
+            <div className="space-y-2">
+              <p className="text-purple-400/60 text-xs">📌 回答で引用された箇所</p>
+              {validSnippets.map((s, i) => {
+                const cleanJa = stripHtml(s.ja);
+                const cleanEn = stripHtml(s.en);
+                return (
+                  <div key={i} className="bg-purple-950/40 border border-purple-500/15 rounded-xl p-3 space-y-2">
+                    {cleanJa && cleanJa !== cleanEn ? (
+                      <>
+                        <p className="text-purple-100/90 text-xs leading-relaxed">{cleanJa}</p>
+                        <button
+                          onClick={() => setShowEn(prev => ({ ...prev, [i]: !prev[i] }))}
+                          className="text-purple-500/50 hover:text-purple-400/70 text-xs transition-colors"
+                        >
+                          {showEn[i] ? '原文を隠す ▲' : '英語原文を表示 ▼'}
+                        </button>
+                        {showEn[i] && (
+                          <p className="text-purple-400/50 text-xs leading-relaxed border-t border-purple-500/10 pt-2 italic">
+                            {cleanEn}
+                          </p>
                         )}
-
-                        {/* 複数図ナビ（ライトボックス内） */}
-                        {figures.length > 1 && (
-                          <div className="flex items-center gap-3">
-                            <button
-                              onClick={() => setFigureIdx(i => (i - 1 + figures.length) % figures.length)}
-                              className="text-white/50 hover:text-white transition-colors text-lg"
-                            >‹</button>
-                            <span className="text-white/40 text-xs">{figureIdx + 1} / {figures.length}</span>
-                            <button
-                              onClick={() => setFigureIdx(i => (i + 1) % figures.length)}
-                              className="text-white/50 hover:text-white transition-colors text-lg"
-                            >›</button>
-                          </div>
-                        )}
-                      </motion.div>
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
+                      </>
+                    ) : (
+                      <p className="text-purple-100/80 text-xs leading-relaxed">{cleanEn}</p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           );
         })()}
 
-        {/* 引用箇所（最重要：なぜ引用されたか） */}
-        {snippetsToShow.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-purple-400/60 text-xs">📌 回答で引用された箇所</p>
-            {snippetsToShow.map((s, i) => {
-              const cleanJa = stripHtml(s.ja);
-              const cleanEn = stripHtml(s.en);
-              return (
-                <div key={i} className="bg-purple-950/40 border border-purple-500/15 rounded-xl p-3 space-y-2">
-                  {cleanJa && cleanJa !== cleanEn ? (
-                    <>
-                      <p className="text-purple-100/90 text-xs leading-relaxed">{cleanJa}</p>
-                      <button
-                        onClick={() => setShowEn(prev => ({ ...prev, [i]: !prev[i] }))}
-                        className="text-purple-500/50 hover:text-purple-400/70 text-xs transition-colors"
-                      >
-                        {showEn[i] ? '原文を隠す ▲' : '英語原文を表示 ▼'}
-                      </button>
-                      {showEn[i] && (
-                        <p className="text-purple-400/50 text-xs leading-relaxed border-t border-purple-500/10 pt-2 italic">
-                          {cleanEn}
-                        </p>
-                      )}
-                    </>
-                  ) : (
-                    <p className="text-purple-100/80 text-xs leading-relaxed">{cleanEn}</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* 概要（折りたたみ・Markdown レンダリング） */}
+        {/* ── 3. 論文の概要（グラデードフェード展開） ── */}
         {enriched?.summaryJa && (
-          <div className="space-y-1.5">
-            <button
-              onClick={() => setSummaryOpen(o => !o)}
-              className="flex items-center gap-1.5 text-purple-400/60 text-xs hover:text-purple-300/80 transition-colors w-full text-left"
-            >
-              <span>{summaryOpen ? '▲' : '▼'}</span>
-              <span>論文の概要（日本語）</span>
-            </button>
-            {summaryOpen && (
-              <div className="bg-purple-950/30 border border-purple-500/10 rounded-xl p-3">
+          <div className="bg-purple-950/30 border border-purple-500/10 rounded-xl p-3 space-y-2">
+            <p className="text-purple-400/60 text-xs font-medium">📄 論文の概要</p>
+
+            {/* テキスト本体：折りたたみ時は max-h で高さ制限しグラデーションで隠す */}
+            <div className="relative">
+              <div
+                className="overflow-hidden transition-[max-height] duration-300 ease-in-out"
+                style={{ maxHeight: summaryOpen ? '1200px' : '80px' }}
+              >
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{
@@ -726,7 +917,186 @@ function CitationPanelContent({
                   {formatSummaryAsMarkdown(enriched.summaryJa)}
                 </ReactMarkdown>
               </div>
-            )}
+
+              {/* グラデーションフェード（折りたたみ時のみ） */}
+              {!summaryOpen && (
+                <div className="absolute bottom-0 inset-x-0 h-10 pointer-events-none
+                  bg-gradient-to-t from-[#130d24] to-transparent" />
+              )}
+            </div>
+
+            <button
+              onClick={() => setSummaryOpen(o => !o)}
+              className="flex items-center gap-1 text-purple-500/60 hover:text-purple-300/80 text-xs transition-colors"
+            >
+              {summaryOpen ? '▲ 閉じる' : '▼ 続きを読む'}
+            </button>
+          </div>
+        )}
+
+        {/* ── 4. 代表図 ── */}
+        {figures.length > 0 && (() => {
+          const fig = figures[figureIdx];
+          return (
+            <div className="space-y-2">
+              {/* ヘッダー：タイトル＋枚数 */}
+              <div className="flex items-center justify-between">
+                <p className="text-purple-400/60 text-xs">🖼 代表図</p>
+                {figures.length > 1 && (
+                  <span className="text-purple-400/50 text-xs tabular-nums">
+                    {figureIdx + 1} / {figures.length}
+                  </span>
+                )}
+              </div>
+
+              {/* サムネイル＋左右矢印 */}
+              <div className="relative group/fig">
+                {/* 画像エリア（クリックで拡大） */}
+                <div
+                  className="relative bg-white rounded-xl overflow-hidden border border-purple-500/10
+                    cursor-zoom-in group"
+                  style={{ minHeight: '100px' }}
+                  onClick={() => setLightboxOpen(true)}
+                  title="クリックして拡大"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={fig?.url}
+                    alt={fig?.captionJa || fig?.caption}
+                    className="w-full object-contain max-h-48 transition-opacity group-hover:opacity-90"
+                    loading="lazy"
+                    onError={() => {
+                      const next = figures.filter((_, i) => i !== figureIdx);
+                      setFigures(next);
+                      setFigureIdx(0);
+                    }}
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="bg-black/60 text-white text-xs px-2 py-1 rounded-lg">🔍 拡大</span>
+                  </div>
+                </div>
+
+                {/* 左右矢印（複数枚のときのみ） */}
+                {figures.length > 1 && (
+                  <>
+                    <button
+                      onClick={e => { e.stopPropagation(); setFigureIdx(i => (i - 1 + figures.length) % figures.length); }}
+                      className="absolute left-1 top-1/2 -translate-y-1/2 z-10
+                        w-7 h-7 flex items-center justify-center
+                        rounded-full bg-black/50 text-white/80 hover:bg-black/70 hover:text-white
+                        transition-all opacity-0 group-hover/fig:opacity-100 text-sm"
+                      title="前の図"
+                    >
+                      ‹
+                    </button>
+                    <button
+                      onClick={e => { e.stopPropagation(); setFigureIdx(i => (i + 1) % figures.length); }}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 z-10
+                        w-7 h-7 flex items-center justify-center
+                        rounded-full bg-black/50 text-white/80 hover:bg-black/70 hover:text-white
+                        transition-all opacity-0 group-hover/fig:opacity-100 text-sm"
+                      title="次の図"
+                    >
+                      ›
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* ドットインジケーター（複数枚のときのみ） */}
+              {figures.length > 1 && (
+                <div className="flex items-center justify-center gap-2 pt-0.5">
+                  {figures.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setFigureIdx(i)}
+                      className={`rounded-full transition-all duration-200
+                        ${i === figureIdx
+                          ? 'w-4 h-2 bg-purple-300'
+                          : 'w-2 h-2 bg-purple-500/35 hover:bg-purple-400/60'
+                        }`}
+                      title={`図 ${i + 1}`}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {(fig?.captionJa || fig?.caption) && (
+                <p className="text-purple-400/50 text-xs leading-relaxed line-clamp-2">
+                  {fig.captionJa || fig.caption}
+                </p>
+              )}
+
+              {/* ライトボックス */}
+              <AnimatePresence>
+                {lightboxOpen && fig && (
+                  <>
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="fixed inset-0 bg-black/85 z-[200] flex flex-col items-center justify-center p-4"
+                      onClick={() => setLightboxOpen(false)}
+                    >
+                      <button
+                        className="absolute top-4 right-4 text-white/60 hover:text-white transition-colors z-10"
+                        onClick={() => setLightboxOpen(false)}
+                      >
+                        <X size={24} />
+                      </button>
+                      <motion.div
+                        initial={{ scale: 0.92, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.92, opacity: 0 }}
+                        transition={{ duration: 0.18 }}
+                        className="max-w-4xl w-full max-h-[75vh] flex flex-col items-center gap-4"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={fig.url}
+                          alt={fig.captionJa || fig.caption}
+                          className="max-w-full max-h-[60vh] object-contain rounded-xl shadow-2xl bg-white p-2"
+                        />
+                        {(fig.captionJa || fig.caption) && (
+                          <div className="text-center space-y-1 max-w-2xl">
+                            {fig.captionJa && (
+                              <p className="text-white/90 text-sm leading-relaxed">{fig.captionJa}</p>
+                            )}
+                            {fig.caption && fig.captionJa !== fig.caption && (
+                              <p className="text-white/45 text-xs leading-relaxed italic">{fig.caption}</p>
+                            )}
+                          </div>
+                        )}
+                        {figures.length > 1 && (
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => setFigureIdx(i => (i - 1 + figures.length) % figures.length)}
+                              className="text-white/50 hover:text-white transition-colors text-lg"
+                            >‹</button>
+                            <span className="text-white/40 text-xs">{figureIdx + 1} / {figures.length}</span>
+                            <button
+                              onClick={() => setFigureIdx(i => (i + 1) % figures.length)}
+                              className="text-white/50 hover:text-white transition-colors text-lg"
+                            >›</button>
+                          </div>
+                        )}
+                      </motion.div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
+          );
+        })()}
+
+        {/* ── 5. 実験結果・比較表 ── */}
+        {resultTables.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-purple-400/60 text-xs">📊 実験結果・比較表</p>
+            {resultTables.map((tbl, ti) => (
+              <ResultTableCard key={ti} table={tbl} />
+            ))}
           </div>
         )}
 

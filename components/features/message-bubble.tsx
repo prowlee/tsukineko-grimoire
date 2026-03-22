@@ -257,6 +257,33 @@ export function MessageBubble({ role, content, citations, suggestions, relatedDo
                     {children}
                   </a>
                 ),
+                table: ({ children }) => (
+                  <div className="overflow-x-auto my-3 rounded-xl border border-purple-500/25">
+                    <table className="w-full text-xs border-collapse">{children}</table>
+                  </div>
+                ),
+                thead: ({ children }) => (
+                  <thead className="bg-purple-900/50">{children}</thead>
+                ),
+                tbody: ({ children }) => (
+                  <tbody>{children}</tbody>
+                ),
+                tr: ({ children }) => (
+                  <tr className="border-b border-purple-500/15 last:border-0 hover:bg-purple-900/20 transition-colors">
+                    {children}
+                  </tr>
+                ),
+                th: ({ children }) => (
+                  <th className="px-3 py-2 text-left text-purple-200/85 font-semibold whitespace-nowrap
+                    border-b border-purple-500/25 first:rounded-tl-xl last:rounded-tr-xl">
+                    {children}
+                  </th>
+                ),
+                td: ({ children }) => (
+                  <td className="px-3 py-2 text-purple-100/80 leading-snug align-top">
+                    {children}
+                  </td>
+                ),
               }}
             >
               {content}

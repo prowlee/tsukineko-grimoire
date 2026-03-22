@@ -97,6 +97,20 @@ export function SettingsPanel() {
     );
   }
 
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-4">
+        <p className="text-purple-300/60 text-sm">設定ページはログインが必要です</p>
+        <button
+          onClick={() => router.push('/login')}
+          className="bg-purple-700 hover:bg-purple-600 text-white text-sm font-semibold px-6 py-2.5 rounded-lg transition-all duration-200"
+        >
+          ログインに進む
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 space-y-4">
       <div>

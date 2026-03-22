@@ -12,13 +12,27 @@ export default function UploadWithAuth() {
   const router = useRouter();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(getClientAuth(), user => {
+    // Firebase クライアント Auth を確認
+    const unsubscribe = onAuthStateChanged(getClientAuth(), async (user) => {
       if (user) {
         setUserId(user.uid);
+        setLoading(false);
       } else {
-        router.push('/login');
+        // Firebase クライアント Auth が null でも、サーバー側セッションを確認する
+        // （COOP 問題等でクライアント Auth が未初期化の場合のフォールバック）
+        try {
+          const res = await fetch('/api/auth/me');
+          if (res.ok) {
+            const data = await res.json();
+            setUserId(data.uid);
+          } else {
+            router.push('/login');
+          }
+        } catch {
+          router.push('/login');
+        }
+        setLoading(false);
       }
-      setLoading(false);
     });
     return () => unsubscribe();
   }, [router]);

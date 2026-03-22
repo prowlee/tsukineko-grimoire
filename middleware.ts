@@ -4,14 +4,26 @@ import type { NextRequest } from 'next/server';
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 認証不要のパス（完全一致 or 正確なプレフィックスで判定）
-  // /api/admin と /api/collector は独自の Bearer 認証を持つため除外
+  // 認証不要のパス
+  // /grimoire・/archive はゲストも閲覧可（追加・設定はログイン必須）
+  // /api/admin・/api/collector は独自の Bearer 認証を持つため除外
   const isPublicPath =
     pathname === '/' ||
     pathname.startsWith('/login') ||
+    pathname === '/grimoire' ||
+    pathname.startsWith('/grimoire/') ||
+    pathname === '/archive' ||
+    pathname === '/archive/upload' ||
+    pathname === '/settings' ||
+    pathname.startsWith('/api/auth/session') ||
+    pathname.startsWith('/api/auth/me') ||
     pathname.startsWith('/api/health') ||
     pathname.startsWith('/api/admin') ||
-    pathname.startsWith('/api/collector');
+    pathname.startsWith('/api/collector') ||
+    pathname.startsWith('/api/paper-figures') ||
+    pathname.startsWith('/api/image-proxy') ||
+    pathname.startsWith('/api/search') ||
+    pathname.startsWith('/api/chat');
   if (isPublicPath) return NextResponse.next();
 
   const session = request.cookies.get('session');

@@ -13,12 +13,13 @@ Google Cloud "Trial credit for GenAI App Builder" ($1,000) を活用。
 |------|------|
 | 🔮 **Grimoire（チャット）** | arXiv 論文を元に日本語で質問・回答（RAG） |
 | 📚 **Archive（書庫）** | 収集済み論文の一覧表示・カテゴリ絞り込み・検索 |
-| ⬆️ **Upload（取り込み）** | PDF・Markdown を手動アップロード |
+| ⬆️ **Upload（取り込み）** | arXiv ID を最大10件一括登録 / PDF・Markdown を手動アップロード |
 | 🛰️ **Auto Collector** | arXiv から AI/ML 論文を自動収集（被引用数フィルタ付き） |
 | 🌐 **日本語翻訳** | タイトル・abstract を自動で日本語翻訳して保存 |
 | 📄 **PDF→Markdown 変換** | 検索精度向上のため PDF をメタデータ注入型 Markdown に変換 |
 | 🔍 **テキスト選択で深掘り** | 回答文を選択するとその箇所を即座に深掘り検索できる |
-| 📎 **Citation Preview** | 引用番号クリックで論文の日本語要約・翻訳スニペット・各種リンクを表示 |
+| 📎 **Citation Preview** | 引用番号クリックで論文の日本語要約・翻訳スニペット・図・実験表を表示 |
+| 👤 **ゲストモード** | ログインなしでチャット・書庫の閲覧が可能（論文追加・設定はログイン必須） |
 
 ---
 
@@ -123,18 +124,23 @@ WATCHPACK_POLLING=true npm run dev -- --port 3002
 
 ## 📖 API Routes
 
-| エンドポイント | メソッド | 説明 |
-|--------------|---------|------|
-| `/api/chat` | POST | RAG チャット（Agent Builder 検索） |
-| `/api/citation` | POST | 引用論文の詳細取得（日本語要約・翻訳スニペット・リンク） |
-| `/api/ingest` | POST | ファイルアップロード（PDF/Markdown） |
-| `/api/collector` | POST | arXiv 論文自動収集 |
-| `/api/admin/sync-status` | POST | Agent Builder インデックス状態を同期 |
-| `/api/admin/reindex` | POST | 既存 PDF を Markdown に変換して再インデックス |
-| `/api/admin/translate-titles` | POST | 既存論文の titleJa を一括翻訳・補完 |
-| `/api/auth/session` | POST/DELETE | セッション Cookie の発行・削除 |
+| エンドポイント | メソッド | 認証 | 説明 |
+|--------------|---------|------|------|
+| `/api/chat` | POST | 不要 | RAG チャット（Agent Builder 検索） |
+| `/api/citation` | POST | 不要 | 引用論文の詳細取得（日本語要約・翻訳スニペット・リンク） |
+| `/api/arxiv-preview` | GET | 不要 | arXiv メタデータ取得（登録なし・プレビュー用） |
+| `/api/ingest` | POST | セッション | ファイルアップロード（PDF/Markdown） |
+| `/api/collector` | POST | セッション or CRON | arXiv 論文収集（ID 直接指定はセッション認証可） |
+| `/api/paper-figures` | GET | 不要 | arXiv HTML から代表図・実験表を抽出 |
+| `/api/image-proxy` | GET | 不要 | arXiv 画像のプロキシ取得 |
+| `/api/documents/check-status` | POST | セッション | pending 論文の Vertex AI インデックス状態を確認・更新 |
+| `/api/auth/session` | POST/DELETE | - | セッション Cookie の発行・削除 |
+| `/api/auth/me` | GET | セッション | セッションからユーザー情報を返す |
+| `/api/admin/sync-status` | POST | CRON | Agent Builder インデックス状態を一括同期（全ユーザー） |
+| `/api/admin/reindex` | POST | CRON | 既存 PDF を Markdown に変換して再インデックス |
+| `/api/admin/translate-titles` | POST | CRON | 既存論文の titleJa を一括翻訳・補完 |
 
-管理系 API は `Authorization: Bearer <CRON_SECRET>` が必要です。
+管理系 API（`/api/admin/*`）は `Authorization: Bearer <CRON_SECRET>` が必要です。
 
 ---
 
@@ -198,44 +204,56 @@ curl -s -X POST "http://localhost:3002/api/admin/translate-titles?secret=local-d
 ```
 tsukineko-grimoire/
 ├── app/
-│   ├── (auth)/login/           # ログインページ
+│   ├── (auth)/login/           # ログインページ（ゲスト/ログイン機能比較）
 │   ├── (main)/
-│   │   ├── grimoire/           # RAG チャット画面
-│   │   ├── archive/            # 書庫（論文一覧・検索）
-│   │   │   └── upload/         # アップロードページ
-│   │   └── settings/           # 設定ページ
-│   └── api/
-│       ├── chat/               # RAG チャット API（クエリタイプ検出・動的プロンプト）
-│       ├── citation/           # 引用詳細 API（日本語要約・スニペット翻訳）
-│       ├── ingest/             # ファイルアップロード API（titleJa 自動翻訳）
-│       ├── collector/          # arXiv 自動収集 API（titleJa 自動翻訳）
-│       ├── admin/
-│       │   ├── sync-status/    # インデックス状態同期
-│       │   ├── reindex/        # PDF→Markdown 再変換
-│       │   └── translate-titles/ # titleJa 一括翻訳（バックフィル）
-│       └── auth/session/       # 認証セッション
+│   │   ├── grimoire/           # RAG チャット画面（使い方ガイド付き初期表示）
+│   │   ├── archive/            # 書庫（論文一覧・カテゴリ絞り込み・auto polling）
+│   │   │   └── upload/         # アップロード（arXiv 一括登録 / その他文書）
+│   │   └── settings/           # 設定・ログアウト
+│   ├── api/
+│   │   ├── chat/               # RAG チャット API（クエリタイプ検出・動的プロンプト）
+│   │   ├── citation/           # 引用詳細 API（日本語要約・スニペット翻訳）
+│   │   ├── arxiv-preview/      # arXiv メタデータ取得（登録なし）
+│   │   ├── ingest/             # ファイルアップロード API
+│   │   ├── collector/          # arXiv 自動収集 API（セッション認証 / CRON 両対応）
+│   │   ├── paper-figures/      # arXiv HTML から代表図・実験表を抽出
+│   │   ├── image-proxy/        # arXiv 画像プロキシ
+│   │   ├── documents/
+│   │   │   └── check-status/   # pending 論文の Vertex AI インデックス確認・更新
+│   │   ├── admin/
+│   │   │   ├── sync-status/    # インデックス状態一括同期（全ユーザー）
+│   │   │   ├── reindex/        # PDF→Markdown 再変換
+│   │   │   └── translate-titles/ # titleJa 一括翻訳（バックフィル）
+│   │   └── auth/
+│   │       ├── session/        # セッション Cookie 発行・削除
+│   │       └── me/             # セッションからユーザー情報を返す
+│   ├── icon.svg                # ファビコン（🌙 SVG）
+│   └── page.tsx                # ランディングページ（マスコット・機能紹介）
 ├── components/
 │   ├── features/
-│   │   ├── chat-interface.tsx  # チャット UI（レスポンシブ Citation Preview・Deep Dive）
+│   │   ├── chat-interface.tsx  # チャット UI（使い方ガイド・Citation Preview・Deep Dive）
 │   │   ├── message-bubble.tsx  # メッセージ表示（Markdown・テキスト選択深掘り）
-│   │   ├── archive-library.tsx # 書庫コンポーネント
-│   │   └── file-uploader.tsx   # アップロードコンポーネント
-│   └── main-nav.tsx            # ナビゲーション（モバイル対応）
+│   │   ├── archive-library.tsx # 書庫（pending auto polling 付き）
+│   │   ├── file-uploader.tsx   # arXiv 一括登録（最大10件・2ステップ確認）
+│   │   └── settings-panel.tsx  # 設定・ログアウト
+│   └── main-nav.tsx            # ナビゲーション（ゲスト/ログイン状態で表示分岐）
 ├── lib/
 │   ├── firebase-admin.ts       # Firebase Admin SDK
 │   ├── firebase.ts             # Firebase Client SDK
-│   ├── auth-helpers.ts         # 認証ヘルパー
+│   ├── auth-helpers.ts         # 認証ヘルパー（x-session-token 検証）
 │   ├── vertex-discovery.ts     # Agent Builder クライアント（シングルトン）
 │   ├── translate.ts            # Cloud Translation API（JA↔EN）
 │   ├── pdf-to-markdown.ts      # PDF→Markdown 変換（pdf-parse v2 クラス API 対応）
-│   ├── html-to-markdown.ts     # arXiv HTML版→Markdown 変換（cheerio、PDF より高精度）
+│   ├── html-to-markdown.ts     # arXiv HTML版→Markdown 変換（cheerio）
 │   ├── semantic-scholar.ts     # 被引用数取得
 │   └── query-cache.ts          # クエリキャッシュ
+├── public/                     # 静的ファイル（マスコット画像等）
 ├── scripts/
-│   ├── curated-ids.csv         # 厳選論文 ID リスト（67件）
+│   ├── curated-ids.csv         # 厳選論文 ID リスト
 │   ├── curated-papers.sh       # 厳選論文収集スクリプト
 │   └── collect-papers.sh       # キーワードバッチ収集スクリプト
-├── middleware.ts                # 認証ミドルウェア
+├── middleware.ts                # 認証ミドルウェア（ゲスト開放パス管理）
+├── next.config.js              # COOP ヘッダー設定（Firebase popup 対応）
 ├── Dockerfile                  # Cloud Run 用
 └── PRD.md                      # 完全仕様書
 ```
@@ -402,6 +420,34 @@ gcloud run deploy tsukineko-grimoire \
 arXiv HTML 版（2022年以降の論文で広くカバー）は LaTeX ソースから直接生成されるため、セクション構造・数式（alttext として LaTeX 保持）・著者情報が正確に取れる。`cheerio` で本文を抽出し、既存の Markdown ヘッダー（日本語概要・Abstract）を先頭に付与して GCS に保存することで、Agent Builder の検索精度が向上する。HTML 版がない古い論文は PDF にフォールバックするため、後方互換性を損なわない。
 
 また、`pdf-parse` のメジャーバージョンアップ（v1 関数 API → v2 クラス `PDFParse` API）への対応も同時に実施した。
+
+---
+
+### 16. ゲストモードと認証フロー設計
+
+**判断**: ログインなしでもチャット（`/grimoire`）と書庫閲覧（`/archive`）を利用可能にし、論文追加（`/archive/upload`）と設定（`/settings`）はログイン必須とした。
+
+**理由**: 「まず使ってみてから登録するか決めたい」というユーザー摩擦を減らすため。ゲストでも主要機能を試せることで、ログインの価値（論文追加・将来のブックマーク等）を実感してから登録判断できる。
+
+**技術的なポイント**: Firebase `signInWithPopup` が `Cross-Origin-Opener-Policy` ヘッダーと競合してポップアップ通信ができない問題を、`next.config.js` で `same-origin-allow-popups` を設定して解決。セッションクッキーが middleware を経由せずに届かないパス（公開パス）では、コンポーネント側が `/api/auth/me` にフォールバック検証する。
+
+---
+
+### 17. arXiv 論文の2ステップ確認登録（最大10件一括）
+
+**判断**: arXiv ID の登録を「検索（プレビュー）→ 確認 → 登録」の2ステップにし、最大10件を一括登録できるようにした。
+
+**理由**: ID を入力して即登録だと「本当にこれか？」の確認ができない。プレビュー段階で論文の存在確認・タイトル・著者・要約を表示することで、誤登録や重複登録を事前に防げる。複数件一括入力は、関連論文をまとめて登録するユースケース（論文サーベイ時など）を想定。
+
+**エラー分類**: 形式不正（⚠️ 橙）・論文未存在（🔍 赤）・取得失敗（⚠️ 赤）・登録済み（✅ グレー）を明確に区別し、ユーザーが次のアクションを判断しやすくした。
+
+---
+
+### 18. Firestore ステータスの自動ポーリング
+
+**判断**: `/archive` を開いている間、`pending` 状態の論文があれば10分ごとに `/api/documents/check-status` を自動実行し、Vertex AI Search に反映済みであれば `indexed` に更新する。
+
+**理由**: インデックス化には最大48時間かかるため、手動で状態を確認・更新する運用は現実的でない。Firestore のリアルタイムリスナーが既に実装済みであるため、ポーリングで Firestore を更新すれば UI は自動的に追従する。
 
 ---
 

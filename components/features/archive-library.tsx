@@ -69,8 +69,10 @@ function groupCategories(docs: Doc[]): CategoryGroup[] {
 }
 
 interface ArchiveLibraryProps {
-  userId: string;
+  userId: string | null;
 }
+
+const POLL_INTERVAL_MS = 10 * 60 * 1000; // 10分
 
 export function ArchiveLibrary({ userId }: ArchiveLibraryProps) {
   const [docs, setDocs] = useState<Doc[]>([]);
@@ -81,11 +83,23 @@ export function ArchiveLibrary({ userId }: ArchiveLibraryProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
+  // pending ドキュメントがある間、10分ごとに check-status を呼んでステータスを更新
+  useEffect(() => {
+    if (!userId) return;
+    const hasPending = docs.some(d => d.status === 'pending');
+    if (!hasPending) return;
+
+    const run = () => fetch('/api/documents/check-status', { method: 'POST' }).catch(() => {});
+    run(); // マウント直後に1回実行
+    const timer = setInterval(run, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [userId, docs]);
+
   useEffect(() => {
     const db = getClientDb();
     const q = query(
       collection(db, 'documents'),
-      where('userId', 'in', [userId, 'system']),
+      where('userId', 'in', [userId ?? '__guest__', 'system']),
       limit(200)
     );
 

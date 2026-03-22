@@ -34,92 +34,308 @@ const DOC_TYPES = [
   { value: 'other',    label: 'その他' },
 ] as const;
 
-// ─── arXiv ID 入力タブ ────────────────────────────────────────────
+// ─── arXiv 一括登録タブ（最大10件：検索 → 確認 → 各自登録）────────
+
+interface ArxivPreview {
+  arxivId: string;
+  title: string;
+  authors: string[];
+  summary: string;
+  category: string;
+  publishedAt: string;
+}
+
+type EntryStatus =
+  | { kind: 'searching' }
+  | { kind: 'preview';     data: ArxivPreview }
+  | { kind: 'registering'; data: ArxivPreview }
+  | { kind: 'registered';  data: ArxivPreview }
+  | { kind: 'duplicate';   arxivId: string }
+  | { kind: 'not_found';   arxivId: string }
+  | { kind: 'invalid';     raw: string }
+  | { kind: 'error';       arxivId: string; message: string };
+
+const MAX_ENTRIES = 10;
+
+/** URL/ID を正規化して arXiv ID を返す。無効なら null */
+function parseArxivId(raw: string): string | null {
+  const s = raw.trim()
+    .replace(/^https?:\/\/arxiv\.org\/(abs|pdf|html)\//, '')
+    .replace(/\.pdf$/, '')
+    .replace(/v\d+$/, '')
+    .trim();
+  // YYMM.NNNNN 形式 or 旧形式7桁
+  if (/^\d{4}\.\d{4,5}$/.test(s) || /^\d{7}$/.test(s)) return s;
+  return null;
+}
 
 function ArxivIdTab({ onSuccess }: { onSuccess?: () => void }) {
-  const [arxivId, setArxivId] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [input, setInput] = useState('');
+  const [entries, setEntries] = useState<EntryStatus[]>([]);
+  const [searching, setSearching] = useState(false);
 
-  const handleSubmit = async () => {
-    const cleaned = arxivId.trim().replace(/^https?:\/\/arxiv\.org\/(abs|pdf)\//, '').replace(/\.pdf$/, '').replace(/v\d+$/, '');
-    if (!cleaned) return;
+  const updateEntry = (i: number, next: EntryStatus) =>
+    setEntries(prev => prev.map((e, idx) => idx === i ? next : e));
 
-    setLoading(true);
+  // Step 1: 一括検索
+  const handleSearch = async () => {
+    const lines = input
+      .split(/[\n,]+/)
+      .map(l => l.trim())
+      .filter(Boolean)
+      .slice(0, MAX_ENTRIES);
+
+    if (lines.length === 0) return;
+    setSearching(true);
+
+    // 初期状態をセット（invalid は即座に確定）
+    const initial: EntryStatus[] = lines.map(raw => {
+      const id = parseArxivId(raw);
+      return id ? { kind: 'searching' } : { kind: 'invalid', raw };
+    });
+    setEntries(initial);
+
+    // 有効な ID を並列で取得
+    await Promise.all(lines.map(async (raw, i) => {
+      const id = parseArxivId(raw);
+      if (!id) return; // invalid は初期設定済み
+      try {
+        const res = await fetch(`/api/arxiv-preview?id=${encodeURIComponent(id)}`);
+        const data = await res.json();
+        if (res.status === 404) {
+          updateEntry(i, { kind: 'not_found', arxivId: id });
+        } else if (!res.ok) {
+          updateEntry(i, { kind: 'error', arxivId: id, message: data.error ?? '取得失敗' });
+        } else {
+          updateEntry(i, { kind: 'preview', data });
+        }
+      } catch {
+        updateEntry(i, { kind: 'error', arxivId: id, message: 'ネットワークエラー' });
+      }
+    }));
+
+    setSearching(false);
+  };
+
+  // Step 2: 1件ずつ登録
+  const handleRegister = async (i: number) => {
+    const entry = entries[i];
+    if (entry.kind !== 'preview') return;
+    const { data } = entry;
+    updateEntry(i, { kind: 'registering', data });
     try {
       const res = await fetch('/api/collector', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ arxivId: cleaned }),
+        body: JSON.stringify({ arxivId: data.arxivId }),
       });
-      const data = await res.json();
-
+      const json = await res.json();
       if (!res.ok) {
-        toast.error(data.error ?? '取り込みに失敗しました');
+        updateEntry(i, { kind: 'error', arxivId: data.arxivId, message: json.error ?? '登録失敗' });
         return;
       }
-
-      if (data.skipped > 0) {
-        toast.info(`arXiv:${cleaned} は既に書庫に登録済みです`);
+      if (json.skipped > 0) {
+        updateEntry(i, { kind: 'duplicate', arxivId: data.arxivId });
       } else {
-        toast.success(`✨ arXiv:${cleaned} を取り込みました`, {
-          description: data.results?.[0]?.title ?? '',
-        });
-        setArxivId('');
+        updateEntry(i, { kind: 'registered', data });
         onSuccess?.();
       }
     } catch {
-      toast.error('取り込み中にエラーが発生しました');
-    } finally {
-      setLoading(false);
+      updateEntry(i, { kind: 'error', arxivId: data.arxivId, message: 'ネットワークエラー' });
     }
   };
+
+  const hasEntries = entries.length > 0;
 
   return (
     <div className="space-y-4">
       <p className="text-purple-300/60 text-xs leading-relaxed">
-        arXiv の論文 ID または URL を入力してください。<br />
-        タイトル・著者・要約を自動取得し、HTML 版でインデックスします。
+        arXiv の論文 ID または URL を1行ずつ入力（最大 {MAX_ENTRIES} 件）。
+        内容を確認してから1件ずつ登録できます。
       </p>
 
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-purple-400/50" />
-          <input
-            type="text"
-            value={arxivId}
-            onChange={e => setArxivId(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !loading) handleSubmit(); }}
-            placeholder="2403.10131 または https://arxiv.org/abs/2403.10131"
-            className="w-full bg-purple-900/20 border border-purple-500/30 rounded-lg
-              pl-9 pr-3 py-2.5 text-purple-100 text-sm placeholder-purple-500/40
-              focus:outline-none focus:border-purple-400/60 transition-colors"
-            disabled={loading}
-          />
+      {/* 入力エリア */}
+      <div className="space-y-2">
+        <textarea
+          value={input}
+          onChange={e => { setInput(e.target.value); setEntries([]); }}
+          placeholder={`2403.10131\n2401.04088\nhttps://arxiv.org/abs/2312.00752`}
+          rows={4}
+          disabled={searching}
+          className="w-full bg-purple-900/20 border border-purple-500/30 rounded-lg
+            px-3 py-2.5 text-purple-100 text-sm placeholder-purple-500/35
+            focus:outline-none focus:border-purple-400/60 transition-colors
+            resize-none font-mono leading-relaxed disabled:opacity-50"
+        />
+        <div className="flex items-center justify-between">
+          <p className="text-purple-400/40 text-xs">
+            {input.split(/[\n,]+/).filter(l => l.trim()).length} / {MAX_ENTRIES} 件
+          </p>
+          <button
+            onClick={handleSearch}
+            disabled={!input.trim() || searching}
+            className="glow-button px-4 py-2 text-sm disabled:opacity-40"
+          >
+            {searching ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-3 h-3 border border-purple-300 border-t-transparent rounded-full animate-spin" />
+                検索中...
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5">
+                <Search size={13} />
+                まとめて検索
+              </span>
+            )}
+          </button>
         </div>
-        <button
-          onClick={handleSubmit}
-          disabled={!arxivId.trim() || loading}
-          className="glow-button px-4 py-2 text-sm disabled:opacity-40 flex-shrink-0"
-        >
-          {loading ? (
-            <span className="inline-flex items-center gap-1.5">
-              <span className="w-3 h-3 border border-purple-300 border-t-transparent rounded-full animate-spin" />
-              取得中
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5">
-              <Upload size={13} />
-              追加
-            </span>
-          )}
-        </button>
       </div>
 
-      <div className="bg-purple-900/15 border border-purple-500/15 rounded-lg p-3 text-purple-400/50 text-xs space-y-1">
-        <p>📌 対応フォーマット例</p>
-        <p className="font-mono">2403.10131 · 2401.04088v2</p>
-        <p className="font-mono">https://arxiv.org/abs/2403.10131</p>
+      {/* 結果リスト */}
+      <AnimatePresence>
+        {hasEntries && (
+          <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-2"
+          >
+            {entries.map((entry, i) => (
+              <EntryCard key={i} entry={entry} onRegister={() => handleRegister(i)} />
+            ))}
+
+            {/* 全件完了後にやり直しボタン */}
+            {entries.every(e => e.kind === 'registered' || e.kind === 'duplicate' || e.kind === 'not_found' || e.kind === 'invalid' || e.kind === 'error') && (
+              <button
+                onClick={() => { setEntries([]); setInput(''); }}
+                className="w-full py-2 text-xs text-purple-400/50 hover:text-purple-300/70
+                  border border-purple-500/15 hover:border-purple-500/30
+                  rounded-lg transition-all duration-200 mt-1"
+              >
+                ← 入力に戻る
+              </button>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* フォーマットヒント（結果がないとき） */}
+      {!hasEntries && (
+        <div className="bg-purple-900/15 border border-purple-500/15 rounded-lg p-3 text-purple-400/50 text-xs space-y-1">
+          <p>📌 対応フォーマット（1行に1件）</p>
+          <p className="font-mono">2403.10131</p>
+          <p className="font-mono">https://arxiv.org/abs/2403.10131</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 1件分の結果カード */
+function EntryCard({ entry, onRegister }: { entry: EntryStatus; onRegister: () => void }) {
+  if (entry.kind === 'searching') {
+    return (
+      <div className="flex items-center gap-2 px-4 py-3 bg-purple-950/30 border border-purple-500/15 rounded-xl">
+        <span className="w-3 h-3 border border-purple-400 border-t-transparent rounded-full animate-spin shrink-0" />
+        <span className="text-purple-400/50 text-xs">取得中...</span>
       </div>
+    );
+  }
+
+  if (entry.kind === 'invalid') {
+    return (
+      <div className="flex items-start gap-2 px-4 py-3 bg-orange-950/20 border border-orange-500/20 rounded-xl">
+        <span className="text-orange-400/70 text-sm shrink-0">⚠️</span>
+        <div>
+          <p className="text-orange-300/70 text-xs font-medium">認識できない形式です</p>
+          <p className="text-orange-400/40 text-xs font-mono mt-0.5">{entry.raw}</p>
+          <p className="text-orange-400/40 text-xs mt-1">例: 2403.10131 または arXiv URL を入力してください</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (entry.kind === 'not_found') {
+    return (
+      <div className="flex items-start gap-2 px-4 py-3 bg-red-950/20 border border-red-500/20 rounded-xl">
+        <span className="text-red-400/70 text-sm shrink-0">🔍</span>
+        <div>
+          <p className="text-red-300/70 text-xs font-medium">論文が見つかりませんでした</p>
+          <p className="text-red-400/40 text-xs font-mono mt-0.5">{entry.arxivId}</p>
+          <p className="text-red-400/40 text-xs mt-1">ID が正しいか、または arXiv に公開済みか確認してください</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (entry.kind === 'error') {
+    return (
+      <div className="flex items-start gap-2 px-4 py-3 bg-red-950/20 border border-red-500/20 rounded-xl">
+        <span className="text-red-400/70 text-sm shrink-0">⚠️</span>
+        <div>
+          <p className="text-red-300/70 text-xs font-medium">取得に失敗しました（時間をおいて再試行してください）</p>
+          <p className="text-red-400/40 text-xs font-mono mt-0.5">{entry.arxivId}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (entry.kind === 'duplicate') {
+    return (
+      <div className="flex items-center gap-2 px-4 py-3 bg-purple-950/30 border border-purple-500/15 rounded-xl">
+        <span className="text-purple-400/50 text-sm shrink-0">✅</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-purple-400/50 text-xs">すでに書庫に登録済みです</p>
+          <p className="text-purple-400/35 text-xs font-mono">{entry.arxivId}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (entry.kind === 'registered') {
+    return (
+      <div className="flex items-center gap-2 px-4 py-3 bg-green-950/20 border border-green-500/20 rounded-xl">
+        <span className="text-green-400/80 text-sm shrink-0">✅</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-green-300/70 text-xs font-medium truncate">{entry.data.title}</p>
+          <p className="text-green-400/40 text-xs mt-0.5">登録完了 — インデックス化には最大48時間かかります</p>
+        </div>
+      </div>
+    );
+  }
+
+  // preview / registering
+  const { data } = entry;
+  const isRegistering = entry.kind === 'registering';
+
+  return (
+    <div className="bg-purple-950/50 border border-purple-500/25 rounded-xl p-4 space-y-2.5">
+      <p className="text-purple-100/90 text-sm font-semibold leading-snug">{data.title}</p>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-purple-400/55 text-xs">
+        {data.authors.length > 0 && (
+          <span>{data.authors.slice(0, 3).join(', ')}{data.authors.length > 3 ? ' et al.' : ''}</span>
+        )}
+        {data.publishedAt && <span>{data.publishedAt.slice(0, 4)}</span>}
+        {data.category && (
+          <span className="bg-purple-900/40 border border-purple-500/20 rounded px-1.5 py-0.5">{data.category}</span>
+        )}
+      </div>
+      {data.summary && (
+        <p className="text-purple-200/45 text-xs leading-relaxed line-clamp-2">{data.summary}</p>
+      )}
+      <button
+        onClick={onRegister}
+        disabled={isRegistering}
+        className="w-full glow-button py-2 text-xs disabled:opacity-50 mt-1"
+      >
+        {isRegistering ? (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-3 h-3 border border-purple-300 border-t-transparent rounded-full animate-spin" />
+            登録中...
+          </span>
+        ) : (
+          '✅ 書庫に登録する'
+        )}
+      </button>
     </div>
   );
 }

@@ -7,6 +7,17 @@ import { getClientAuth, getGoogleProvider } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
+const GUEST_FEATURES = [
+  { icon: '🔮', label: 'RAGチャット', desc: 'インデックスした論文にAIで質問' },
+  { icon: '📚', label: '論文書庫', desc: '蓄積した論文を一覧・検索' },
+];
+
+const LOGIN_FEATURES = [
+  { icon: '🛰️', label: '論文の追加', desc: 'arXivから論文をインデックス', soon: false },
+  { icon: '📌', label: 'ブックマーク', desc: '気になった論文を保存', soon: true },
+  { icon: '📬', label: '週刊レポート', desc: '新着論文を受け取る', soon: true },
+];
+
 export default function LoginPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -15,17 +26,14 @@ export default function LoginPage() {
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError('');
-
     try {
       const result = await signInWithPopup(getClientAuth(), getGoogleProvider());
       const idToken = await result.user.getIdToken();
-
       const response = await fetch('/api/auth/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idToken }),
       });
-
       if (response.ok) {
         router.push('/grimoire');
       } else {
@@ -41,45 +49,79 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen flex items-center justify-center relative overflow-hidden">
-      {/* Background glow */}
       <div className="absolute inset-0 bg-gradient-radial from-purple-900/10 via-transparent to-transparent pointer-events-none" />
       <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-96 h-96 bg-purple-700/10 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="glass-panel p-10 max-w-md w-full relative z-10">
-        {/* Moon icon */}
-        <div className="text-6xl text-center mb-4 animate-levitate">🌙</div>
-
-        <h1 className="magic-title text-3xl font-bold text-center mb-1">
+      <div className="glass-panel p-8 max-w-md w-full relative z-10">
+        {/* ヘッダー */}
+        <div className="text-5xl text-center mb-3 animate-levitate">🌙</div>
+        <h1 className="text-3xl font-bold text-center mb-3 text-transparent bg-clip-text bg-gradient-to-r from-purple-300 to-yellow-400">
           Tsukineko Grimoire
         </h1>
-        <p className="text-purple-300/60 text-center text-sm mb-8">
-          月ねこグリモワール
-        </p>
+        <div className="flex items-center justify-center gap-3 mb-7">
+          <div className="h-px w-10 bg-gradient-to-r from-transparent to-purple-400/45" />
+          <p className="text-purple-300/60 text-xs tracking-[0.25em]">月ねこグリモワール</p>
+          <div className="h-px w-10 bg-gradient-to-l from-transparent to-purple-400/45" />
+        </div>
 
-        <div className="space-y-3 mb-8 text-sm text-purple-200/60">
-          <div className="flex items-center gap-2">
-            <span>📜</span> <span>PDFや論文を魔導書に収蔵</span>
+        {/* ゲストでもできること */}
+        <div className="mb-4">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent to-purple-400/25" />
+            <p className="text-purple-300/50 text-[10px] font-semibold tracking-[0.18em] whitespace-nowrap">
+              ゲストでもできること
+            </p>
+            <div className="flex-1 h-px bg-gradient-to-l from-transparent to-purple-400/25" />
           </div>
-          <div className="flex items-center gap-2">
-            <span>🔮</span> <span>自然言語で知識を問う</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span>✨</span> <span>技術記事を自動で詠唱</span>
+          <div className="space-y-2 px-1">
+            {GUEST_FEATURES.map(f => (
+              <div key={f.label} className="flex items-center text-sm">
+                <span className="w-6 text-base shrink-0">{f.icon}</span>
+                <span className="w-28 shrink-0 text-purple-200/70 font-medium">{f.label}</span>
+                <span className="text-purple-300/35 text-xs">— {f.desc}</span>
+              </div>
+            ))}
           </div>
         </div>
 
+        {/* Google サインインするとさらに */}
+        <div className="mb-7">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent to-purple-400/35" />
+            <p className="text-purple-300/70 text-[10px] font-semibold tracking-[0.18em] whitespace-nowrap">
+              Google サインインするとさらに
+            </p>
+            <div className="flex-1 h-px bg-gradient-to-l from-transparent to-purple-400/35" />
+          </div>
+          <div className="space-y-2 px-1">
+            {LOGIN_FEATURES.map(f => (
+              <div key={f.label} className="flex items-center text-sm">
+                <span className="w-6 text-base shrink-0">{f.icon}</span>
+                <span className={`w-28 shrink-0 font-medium ${f.soon ? 'text-purple-200/35' : 'text-purple-200/85'}`}>
+                  {f.label}
+                </span>
+                <span className="text-purple-300/30 text-xs flex-1">— {f.desc}</span>
+                {f.soon && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded border border-purple-500/20 text-purple-400/40 whitespace-nowrap shrink-0">
+                    Coming Soon
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Google ログインボタン */}
         <button
           onClick={handleGoogleSignIn}
           disabled={loading}
-          className="glow-button w-full py-3 text-base flex items-center justify-center gap-3"
+          className="glow-button w-full py-3 text-sm flex items-center justify-center gap-3 mb-3"
         >
           {loading ? (
-            <>
-              <span className="animate-spin">🌀</span> 召喚中...
-            </>
+            <><span className="animate-spin">🌀</span> ログイン中...</>
           ) : (
             <>
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                 <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
                 <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
@@ -88,6 +130,17 @@ export default function LoginPage() {
               Sign in with Google
             </>
           )}
+        </button>
+
+        {/* ゲストとして利用ボタン */}
+        <button
+          onClick={() => router.push('/grimoire')}
+          className="w-full py-2.5 text-sm text-purple-300/65 hover:text-purple-200/90
+            bg-purple-900/20 hover:bg-purple-900/35
+            border border-purple-500/20 hover:border-purple-500/40
+            rounded-lg transition-all duration-200"
+        >
+          ゲストとして利用
         </button>
 
         {error && (

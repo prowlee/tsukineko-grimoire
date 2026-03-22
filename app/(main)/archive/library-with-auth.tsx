@@ -12,13 +12,22 @@ export default function LibraryWithAuth() {
   const router = useRouter();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(getClientAuth(), user => {
+    const unsubscribe = onAuthStateChanged(getClientAuth(), async (user) => {
       if (user) {
         setUserId(user.uid);
+        setLoading(false);
       } else {
-        router.push('/login');
+        // /archive はゲストも閲覧可。サーバー側セッションがあればログイン済み扱い
+        try {
+          const res = await fetch('/api/auth/me');
+          if (res.ok) {
+            const data = await res.json();
+            setUserId(data.uid);
+          }
+          // ゲストは userId=null のまま（ArchiveLibrary がゲスト表示を担う）
+        } catch { /* ゲストとして続行 */ }
+        setLoading(false);
       }
-      setLoading(false);
     });
     return () => unsubscribe();
   }, [router]);
@@ -30,8 +39,6 @@ export default function LibraryWithAuth() {
       </div>
     );
   }
-
-  if (!userId) return null;
 
   return <ArchiveLibrary userId={userId} />;
 }

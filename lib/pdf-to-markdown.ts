@@ -57,8 +57,12 @@ function cleanPdfText(raw: string): string {
 
 /**
  * メタデータ + 本文テキストから Markdown を組み立てる。
- * 先頭にメタデータブロックを置くことで、Agent Builder が
- * 各チャンクのコンテキストを把握しやすくなる。
+ *
+ * 構造の設計方針：
+ * - タイトルは先頭（文書識別に使用）
+ * - 概要（日本語・英語）はタイトル直後（クエリとのマッチング最優先）
+ * - 著者名・日付などのメタデータは末尾に配置
+ *   → Agent Builder の extractive_answers が著者名行を誤抽出しないようにする
  */
 function buildMarkdown(meta: PaperMetadata, bodyText: string): string {
   const authorsStr = meta.authors.length > 0 ? meta.authors.join(', ') : 'Unknown';
@@ -68,16 +72,11 @@ function buildMarkdown(meta: PaperMetadata, bodyText: string): string {
 
   const lines: string[] = [];
 
-  // ── ヘッダー ──────────────────────────────────────────────────
+  // ── タイトル（先頭：文書識別用） ──────────────────────────────
   lines.push(`# ${meta.title}`);
   lines.push('');
-  lines.push(`**Authors:** ${authorsStr}`);
-  if (meta.publishedAt) lines.push(`**Published:** ${meta.publishedAt}`);
-  if (meta.category)    lines.push(`**Category:** ${meta.category}`);
-  if (arxivUrl)         lines.push(`**Source:** ${arxivUrl}`);
-  lines.push('');
 
-  // ── 日本語概要（日本語クエリとのマッチング向上） ────────────
+  // ── 日本語概要（日本語クエリとのマッチング最優先） ──────────
   if (meta.summaryJa) {
     lines.push('## 日本語概要');
     lines.push('');
@@ -98,7 +97,16 @@ function buildMarkdown(meta: PaperMetadata, bodyText: string): string {
     lines.push('---');
     lines.push('');
     lines.push(bodyText);
+    lines.push('');
   }
+
+  // ── メタデータ（末尾：extractive_answers の誤抽出を防ぐ） ────
+  lines.push('---');
+  lines.push('');
+  lines.push(`**Authors:** ${authorsStr}`);
+  if (meta.publishedAt) lines.push(`**Published:** ${meta.publishedAt}`);
+  if (meta.category)    lines.push(`**Category:** ${meta.category}`);
+  if (arxivUrl)         lines.push(`**Source:** ${arxivUrl}`);
 
   return lines.join('\n');
 }

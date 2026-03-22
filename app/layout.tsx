@@ -4,6 +4,7 @@ import './globals.css';
 export const metadata: Metadata = {
   title: '🌙 Tsukineko Grimoire',
   description: '知識を貪り、創造の魔法を紡ぐ、自分専用の魔導書',
+  icons: { icon: '/icon.svg' },
 };
 
 export const viewport: Viewport = {

@@ -68,6 +68,7 @@ export async function POST(req: Request) {
 Do NOT repeat the same information across sections. Each section must add new content.
 If information for a section is not found in the search results, omit that section entirely. Do not write "information is not available."
 Add citation numbers like [1][2] after each sentence or bullet that references a source.
+Only use a Markdown table when you have specific numerical metrics (accuracy, F1, BLEU, benchmark scores, etc.) to compare. For listing methods or findings descriptively, always use bullet points — never a table.
 
 ## 概要
 1-2 sentences summarizing the current state or trend. [cite]
@@ -76,9 +77,10 @@ Add citation numbers like [1][2] after each sentence or bullet that references a
 Background and motivation. Why does this topic matter? [cite]
 
 ## 主な手法・研究
-- Method or finding 1 [cite]
-- Method or finding 2 [cite]
-- Method or finding 3 [cite]
+(Always use bullet points here. Do NOT use a table.)
+- Method or finding 1 with brief description [cite]
+- Method or finding 2 with brief description [cite]
+- Method or finding 3 with brief description [cite]
 
 Write in natural Japanese. No repetition between sections.`,
     },
@@ -90,11 +92,13 @@ Write in natural Japanese. No repetition between sections.`,
 Do NOT repeat the same information across sections.
 If information for a section is not found in the search results, omit that section entirely. Do not write "information is not available."
 Add citation numbers like [1][2] after each sentence or bullet that references a source.
+Only use a Markdown table when you have specific numerical metrics to compare. For descriptive listings, always use bullet points.
 
 ## 定義
 One clear definition sentence. [cite]
 
 ## 特徴・構成要素
+(Use bullet points.)
 - Feature 1 [cite]
 - Feature 2 [cite]
 
@@ -111,11 +115,13 @@ Write in natural Japanese. Keep it concise and precise.`,
 Do NOT repeat the same information across sections. Each bullet must add NEW evidence.
 If information for a section is not found in the search results, omit that section entirely. Do not write "information is not available."
 Add citation numbers like [1][2] after each sentence or bullet that references a source.
+Only use a Markdown table when you have specific numerical metrics to compare. For explanatory listings, always use bullet points.
 
 ## 結論
 One sentence directly answering how it works. [cite]
 
 ## 論拠
+(Use bullet points.)
 - Point 1 with brief reason [cite]
 - Point 2 with brief reason [cite]
 - Point 3 with brief reason [cite]
@@ -129,14 +135,17 @@ Write in natural Japanese.`,
       summaryResultCount: 4,
       preamble: `You are an AI/ML research assistant. Answer in Japanese using this structure.
 Do NOT repeat the same information across sections.
-If information for a section is not found in the search results, omit that section entirely. Do not write "information is not available."
+CRITICAL: If the search results do not contain enough information to write a section with actual content, OMIT that section entirely. Never write that information was not found or could not be identified — just skip the section silently.
+CRITICAL: If ALL sections would be empty, respond with only one short sentence explaining what you could not find, without any section headers.
 Add citation numbers like [1][2] after each sentence or bullet that references a source.
+When comparing multiple methods, models, or metrics, present the data as a Markdown table instead of bullet points.
 
 ## 共通点
 What both/all approaches share. [cite]
 
 ## 相違点
-| 観点 | A | B |
+Use a Markdown table with the compared methods as columns and key differences as rows:
+| 観点 | 手法A | 手法B |
 |---|---|---|
 | (key difference 1) | ... | ... |
 | (key difference 2) | ... | ... |
@@ -144,7 +153,7 @@ What both/all approaches share. [cite]
 ## 使い分けの指針
 When to choose which, with brief reasoning. [cite]
 
-Write in natural Japanese.`,
+Write in natural Japanese. Include only sections that have real content from the search results.`,
     },
 
     practical: {
@@ -154,16 +163,19 @@ Write in natural Japanese.`,
 Do NOT repeat the same information across sections.
 If information for a section is not found in the search results, omit that section entirely. Do not write "information is not available."
 Add citation numbers like [1][2] after each sentence or bullet that references a source.
+Only use a Markdown table when you have specific numerical metrics to compare. For steps and considerations, always use numbered lists or bullet points.
 
 ## 概要
 One sentence describing what we are implementing or doing. [cite]
 
 ## 手順
+(Use a numbered list.)
 1. Step 1 [cite]
 2. Step 2 [cite]
 3. Step 3
 
 ## 注意点・ポイント
+(Use bullet points.)
 - Important consideration 1 [cite]
 - Important consideration 2 [cite]
 
@@ -177,13 +189,16 @@ Write in natural, practical Japanese.`,
 Do NOT repeat the same information across sections.
 If information for a section is not found in the search results, omit that section entirely. Do not write "information is not available."
 Add citation numbers like [1][2] after each sentence or bullet that references a source.
+When comparing multiple methods, models, or metrics, present the data as a Markdown table instead of bullet points.
 
 ## 主な貢献
 What is novel or significant about this work? [cite]
 
 ## 実験・評価
-- Dataset and benchmark used [cite]
-- Key metric and result [cite]
+If multiple methods or baselines are compared, format results as a Markdown table:
+| 手法 | データセット | 指標 | スコア |
+|---|---|---|---|
+| ... | ... | ... | ... |
 
 ## 限界と今後の課題
 - Known limitations [cite]
@@ -322,8 +337,17 @@ Write in precise, academic Japanese suitable for a researcher.`,
     }
 
     // 結果なし検知
-    const NO_RESULTS_PATTERN = /no results|結果が見つかりません|try rephrasing|検索語句を修正/i;
-    if (NO_RESULTS_PATTERN.test(answer) || answer.trim() === '') {
+    // - Agent Builder が明示的に「情報なし」を返すパターン
+    // - 全セクションが否定文で埋まる「空構造」パターン（比較クエリで頻発）
+    const NO_RESULTS_PATTERN =
+      /no results|結果が見つかりません|try rephrasing|検索語句を修正|見当たりませんでした|見出すことはできません|特定できません|見つけることができません|情報はありません|記述は見当たりません|確認できません|情報が不足/i;
+
+    // 否定文が回答の大半を占める「空構造」を検出（各セクションが「できませんでした」だけの状態）
+    const negativeCount = (answer.match(/ませんでした|できません|ありません|見当たりません/g) ?? []).length;
+    const sectionCount  = (answer.match(/^##\s/gm) ?? []).length;
+    const isEmptyStructure = sectionCount >= 2 && negativeCount >= sectionCount;
+
+    if (NO_RESULTS_PATTERN.test(answer) || isEmptyStructure || answer.trim() === '') {
       const keyword = question.replace(/[「」『』【】\(\)（）]/g, '').trim().slice(0, 30);
 
       // Firestore から関連論文を検索（実際に存在するものだけ表示）
