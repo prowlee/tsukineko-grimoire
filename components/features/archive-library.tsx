@@ -24,8 +24,18 @@ interface Doc {
   arxivId: string;
   publishedAt: string;
   tags: string[];
+  theme: string;
   metadata?: { source?: string; docType?: string };
 }
+
+const THEME_LABELS: Record<string, { label: string; short: string; emoji: string }> = {
+  A: { label: 'Foundations',          short: 'A',  emoji: '📖' },
+  B: { label: 'Retrieval & RAG',      short: 'B',  emoji: '🔍' },
+  C: { label: 'Agentic / Deep Research', short: 'C', emoji: '🤖' },
+  D: { label: 'Evaluation',           short: 'D',  emoji: '📊' },
+  E: { label: 'Trust & Safety',       short: 'E',  emoji: '🛡️' },
+  F: { label: 'Build & Operate',      short: 'F',  emoji: '⚙️' },
+};
 
 interface CategoryGroup {
   prefix: string;           // "cs", "math", "other"
@@ -77,11 +87,15 @@ const POLL_INTERVAL_MS = 10 * 60 * 1000; // 10分
 export function ArchiveLibrary({ userId }: ArchiveLibraryProps) {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<string>('all');   // category filter
+  const [selected, setSelected] = useState<string>('all');         // category filter
+  const [selectedTheme, setSelectedTheme] = useState<string>('all'); // theme filter
   const [search, setSearch] = useState('');
   const [fullText, setFullText] = useState(false); // false=タイトル検索 / true=全文検索
+  const [sortKey, setSortKey] = useState<'uploadedDesc' | 'publishedDesc' | 'titleAsc'>('uploadedDesc');
+  const [publishedYear, setPublishedYear] = useState<string>('');  // '' = すべて
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [shelvedIds, setShelvedIds] = useState<Set<string>>(new Set());
 
   // pending ドキュメントがある間、10分ごとに check-status を呼んでステータスを更新
   useEffect(() => {
@@ -94,6 +108,17 @@ export function ArchiveLibrary({ userId }: ArchiveLibraryProps) {
     const timer = setInterval(run, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [userId, docs]);
+
+  // My Shelf に追加済みの documentId を購読
+  useEffect(() => {
+    if (!userId) { setShelvedIds(new Set()); return; }
+    const db = getClientDb();
+    const q = query(collection(db, 'shelves', userId, 'items'));
+    const unsubscribe = onSnapshot(q, snap => {
+      setShelvedIds(new Set(snap.docs.map(d => d.id)));
+    });
+    return () => unsubscribe();
+  }, [userId]);
 
   useEffect(() => {
     const db = getClientDb();
@@ -121,6 +146,7 @@ export function ArchiveLibrary({ userId }: ArchiveLibraryProps) {
           arxivId: d.arxivId ?? '',
           publishedAt: d.publishedAt ?? '',
           tags: d.tags ?? [],
+          theme: d.theme ?? '',
           metadata: d.metadata ?? {},
         };
       });
@@ -150,12 +176,26 @@ export function ArchiveLibrary({ userId }: ArchiveLibraryProps) {
 
   const categoryGroups = useMemo(() => groupCategories(docs), [docs]);
 
+  const yearOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const doc of docs) {
+      const y = doc.publishedAt?.slice(0, 4);
+      if (y && y.length === 4) s.add(y);
+    }
+    return Array.from(s).sort((a, b) => b.localeCompare(a));
+  }, [docs]);
+
   const filteredDocs = useMemo(() => {
-    return docs.filter(doc => {
+    const filtered = docs.filter(doc => {
       const matchCat =
         selected === 'all' ||
         doc.category === selected ||
         (selected === 'other' && !doc.category);
+      const matchTheme =
+        selectedTheme === 'all' ||
+        (selectedTheme === 'none' ? !doc.theme : doc.theme === selectedTheme);
+      const matchYear =
+        !publishedYear || doc.publishedAt?.startsWith(publishedYear);
       const q = search.toLowerCase().trim();
       const matchSearch =
         !q ||
@@ -166,9 +206,32 @@ export function ArchiveLibrary({ userId }: ArchiveLibraryProps) {
           doc.summaryJa.toLowerCase().includes(q) ||
           doc.authors.some(a => a.toLowerCase().includes(q))
         ));
-      return matchCat && matchSearch;
+      return matchCat && matchTheme && matchYear && matchSearch;
     });
-  }, [docs, selected, search, fullText]);
+
+    // ソート
+    return [...filtered].sort((a, b) => {
+      if (sortKey === 'publishedDesc') {
+        return (b.publishedAt ?? '').localeCompare(a.publishedAt ?? '');
+      }
+      if (sortKey === 'titleAsc') {
+        const ta = (a.titleJa || a.title).toLowerCase();
+        const tb = (b.titleJa || b.title).toLowerCase();
+        return ta.localeCompare(tb, 'ja');
+      }
+      // uploadedDesc（デフォルト）
+      return (b.uploadedAt ?? '').localeCompare(a.uploadedAt ?? '');
+    });
+  }, [docs, selected, selectedTheme, publishedYear, search, fullText, sortKey]);
+
+  const themeCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const doc of docs) {
+      const key = doc.theme || 'none';
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return counts;
+  }, [docs]);
 
   const toggleGroup = (prefix: string) => {
     setExpanded(prev => {
@@ -192,49 +255,88 @@ export function ArchiveLibrary({ userId }: ArchiveLibraryProps) {
       <SidebarItem
         label="📁 すべて"
         count={docs.length}
-        active={selected === 'all'}
-        onClick={() => { setSelected('all'); setMobileSidebarOpen(false); }}
+        active={selected === 'all' && selectedTheme === 'all'}
+        onClick={() => { setSelected('all'); setSelectedTheme('all'); setMobileSidebarOpen(false); }}
       />
 
-      {/* Category groups */}
-      {categoryGroups.map(group => (
-        <div key={group.prefix}>
-          <button
-            onClick={() => toggleGroup(group.prefix)}
-            className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg
-              text-purple-300/50 hover:text-purple-300/80 transition-colors text-xs
-              uppercase tracking-wider mt-2"
-          >
-            <span>{group.label}</span>
-            <ChevronRight
-              size={12}
-              className={`transition-transform duration-200 ${expanded.has(group.prefix) ? 'rotate-90' : ''}`}
+      {/* テーマフィルタ */}
+      <div className="mt-3">
+        <p className="px-3 py-1 text-purple-300/40 text-xs uppercase tracking-wider">テーマ</p>
+        <div className="space-y-0.5">
+          {Object.entries(THEME_LABELS).map(([key, { label, emoji }]) => {
+            const count = themeCounts[key] ?? 0;
+            if (count === 0) return null;
+            return (
+              <SidebarItem
+                key={key}
+                label={`${emoji} ${label}`}
+                count={count}
+                active={selectedTheme === key}
+                onClick={() => { setSelectedTheme(key); setMobileSidebarOpen(false); }}
+              />
+            );
+          })}
+          {(themeCounts['none'] ?? 0) > 0 && (
+            <SidebarItem
+              label="… 未分類"
+              count={themeCounts['none'] ?? 0}
+              active={selectedTheme === 'none'}
+              onClick={() => { setSelectedTheme('none'); setMobileSidebarOpen(false); }}
             />
-          </button>
-
-          <AnimatePresence>
-            {expanded.has(group.prefix) && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="overflow-hidden pl-2 space-y-0.5"
-              >
-                {group.subs.map(sub => (
-                  <SidebarItem
-                    key={sub}
-                    label={sub === 'other' ? '手動追加' : sub}
-                    count={docs.filter(d => (sub === 'other' ? !d.category : d.category === sub)).length}
-                    active={selected === sub}
-                    onClick={() => { setSelected(sub); setMobileSidebarOpen(false); }}
-                  />
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
+          )}
         </div>
-      ))}
+      </div>
+
+      {/* arXiv カテゴリ */}
+      <div className="mt-4 pt-3 border-t border-purple-500/15">
+        <p className="px-3 py-1 text-purple-300/40 text-xs tracking-wider">arXiv カテゴリ</p>
+      </div>
+      {categoryGroups.map(group => {
+        const groupCount = group.subs.reduce(
+          (sum, sub) => sum + docs.filter(d => (sub === 'other' ? !d.category : d.category === sub)).length,
+          0
+        );
+        return (
+          <div key={group.prefix}>
+            <button
+              onClick={() => toggleGroup(group.prefix)}
+              className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg
+                text-purple-300/50 hover:text-purple-300/80 transition-colors text-xs mt-1"
+            >
+              <span className="flex items-center gap-1.5">
+                <ChevronRight
+                  size={12}
+                  className={`transition-transform duration-200 flex-shrink-0 ${expanded.has(group.prefix) ? 'rotate-90' : ''}`}
+                />
+                {group.label}
+              </span>
+              <span className="text-purple-400/40 text-[10px] tabular-nums">{groupCount}</span>
+            </button>
+
+            <AnimatePresence>
+              {expanded.has(group.prefix) && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="overflow-hidden pl-2 space-y-0.5"
+                >
+                  {group.subs.map(sub => (
+                    <SidebarItem
+                      key={sub}
+                      label={sub === 'other' ? '手動追加' : sub}
+                      count={docs.filter(d => (sub === 'other' ? !d.category : d.category === sub)).length}
+                      active={selected === sub}
+                      onClick={() => { setSelected(sub); setMobileSidebarOpen(false); }}
+                    />
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        );
+      })}
     </nav>
   );
 
@@ -284,7 +386,9 @@ export function ArchiveLibrary({ userId }: ArchiveLibraryProps) {
             className="md:hidden flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg
               border border-purple-500/20 text-purple-300/60 text-xs"
           >
-            📁 {selected === 'all' ? 'すべて' : selected}
+            {selectedTheme !== 'all'
+              ? `${THEME_LABELS[selectedTheme]?.emoji ?? '…'} ${selectedTheme === 'none' ? '未分類' : selectedTheme}`
+              : `📁 ${selected === 'all' ? 'すべて' : selected}`}
           </button>
 
           <div className="relative flex-1">
@@ -315,6 +419,48 @@ export function ArchiveLibrary({ userId }: ArchiveLibraryProps) {
             <span className="hidden sm:inline">{fullText ? '全文検索中' : '詳細検索'}</span>
             <span className="sm:hidden">🔍</span>
           </button>
+        </div>
+
+        {/* フィルター行：公開年・ソート */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2 border-b border-purple-500/10">
+          {yearOptions.length > 0 && (
+            <label className="inline-flex items-center gap-1 text-[11px] text-purple-500/50 whitespace-nowrap">
+              公開年
+              <select
+                value={publishedYear}
+                onChange={e => setPublishedYear(e.target.value)}
+                className="bg-purple-950/50 border border-purple-500/25 rounded-lg px-2 py-1 ml-1
+                  text-purple-200/90 text-[11px] focus:outline-none focus:ring-1 focus:ring-purple-400/40"
+              >
+                <option value="">すべて</option>
+                {yearOptions.map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label className="inline-flex items-center gap-1 text-[11px] text-purple-500/50 whitespace-nowrap">
+            並び替え
+            <select
+              value={sortKey}
+              onChange={e => setSortKey(e.target.value as typeof sortKey)}
+              className="bg-purple-950/50 border border-purple-500/25 rounded-lg px-2 py-1 ml-1
+                text-purple-200/90 text-[11px] focus:outline-none focus:ring-1 focus:ring-purple-400/40"
+            >
+              <option value="uploadedDesc">追加日（新しい順）</option>
+              <option value="publishedDesc">公開日（新しい順）</option>
+              <option value="titleAsc">タイトル（あいうえお）</option>
+            </select>
+          </label>
+          {(publishedYear) && (
+            <button
+              type="button"
+              onClick={() => setPublishedYear('')}
+              className="text-[11px] text-purple-400/50 hover:text-purple-300 underline-offset-2 hover:underline"
+            >
+              ✕ クリア
+            </button>
+          )}
         </div>
 
         {/* Count + 検索フィードバック */}
@@ -353,7 +499,14 @@ export function ArchiveLibrary({ userId }: ArchiveLibraryProps) {
           ) : (
             <AnimatePresence initial={false}>
               {filteredDocs.map((doc, i) => (
-                <DocCard key={doc.id} doc={doc} index={i} search={search} />
+                <DocCard
+                  key={doc.id}
+                  doc={doc}
+                  index={i}
+                  search={search}
+                  userId={userId}
+                  isShelved={shelvedIds.has(doc.id)}
+                />
               ))}
             </AnimatePresence>
           )}
@@ -409,9 +562,43 @@ function SidebarItem({
   );
 }
 
-function DocCard({ doc, index, search }: { doc: Doc; index: number; search: string }) {
+function DocCard({
+  doc, index, search, userId, isShelved,
+}: {
+  doc: Doc; index: number; search: string;
+  userId: string | null; isShelved: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const [shelfLoading, setShelfLoading] = useState(false);
   const displaySummary = doc.summaryJa || doc.summary;
+
+  const handleShelf = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!userId) { toast.error('本棚機能はログインが必要です'); return; }
+    setShelfLoading(true);
+    try {
+      if (isShelved) {
+        await fetch(`/api/shelf/${doc.id}`, { method: 'DELETE' });
+        toast.success('本棚から削除しました');
+      } else {
+        const res = await fetch('/api/shelf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ documentId: doc.id }),
+        });
+        const data = await res.json();
+        if (data.message === 'already_shelved') {
+          toast('すでに本棚に追加済みです');
+        } else {
+          toast.success('マイ本棚に追加しました 🗂');
+        }
+      }
+    } catch {
+      toast.error('エラーが発生しました');
+    } finally {
+      setShelfLoading(false);
+    }
+  };
 
   return (
     <motion.article
@@ -446,12 +633,36 @@ function DocCard({ doc, index, search }: { doc: Doc; index: number; search: stri
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               <StatusBadge status={doc.status} />
+              {/* 本棚ボタン */}
+              <button
+                onClick={handleShelf}
+                disabled={shelfLoading}
+                title={isShelved ? '本棚から削除' : 'マイ本棚に追加'}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border
+                  transition-all duration-150 disabled:opacity-40
+                  ${isShelved
+                    ? 'bg-purple-700/25 border-purple-400/40 text-purple-300/90'
+                    : 'border-purple-500/25 text-purple-400/50 hover:bg-purple-700/20 hover:border-purple-400/45 hover:text-purple-300/80'
+                  }`}
+              >
+                <span>🗂</span>
+                <span>{isShelved ? '登録済み' : '本棚に追加'}</span>
+              </button>
               <span className="text-purple-500/40 text-xs">{expanded ? '▲' : '▼'}</span>
             </div>
           </div>
 
           {/* Badges */}
           <div className="flex flex-wrap items-center gap-1.5">
+            {/* テーマバッジ */}
+            {doc.theme && THEME_LABELS[doc.theme] && (
+              <span
+                className="px-2 py-0.5 rounded-full bg-indigo-900/25 border border-indigo-500/25
+                  text-indigo-300/70 text-xs hover:border-indigo-400/50 transition-colors"
+              >
+                {THEME_LABELS[doc.theme].emoji} {THEME_LABELS[doc.theme].label}
+              </span>
+            )}
             {/* ソースバッジ */}
             {doc.arxivId ? (
               <a

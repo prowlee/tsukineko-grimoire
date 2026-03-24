@@ -32,9 +32,10 @@ export default function LandingPage() {
           <img
             src="/tsukineko-mascot.png"
             alt="月ねこグリモワール マスコット"
-            width={200}
-            height={200}
-            className="rounded-2xl shadow-[0_0_48px_rgba(167,139,250,0.45)] border border-purple-500/20"
+            className="w-[200px] h-[200px] object-contain rounded-2xl
+              shadow-[0_0_48px_rgba(167,139,250,0.45)]
+              border border-purple-500/20
+              bg-white/5"
           />
         </div>
 

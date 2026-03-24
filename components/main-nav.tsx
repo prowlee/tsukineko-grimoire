@@ -35,6 +35,7 @@ export default function MainNav() {
         {/* ログイン済み */}
         {user !== undefined && user !== null && (
           <>
+            <NavLink pathname={pathname} href="/shelf"         emoji="🗂"  label="My Shelf" />
             <NavLink pathname={pathname} href="/archive/upload" emoji="⬆️" label="Upload" />
             <NavLink pathname={pathname} href="/settings"       emoji="⚙️"  label="設定" />
           </>

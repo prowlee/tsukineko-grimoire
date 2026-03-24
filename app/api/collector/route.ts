@@ -7,6 +7,8 @@ import { pdfToMarkdown } from '@/lib/pdf-to-markdown';
 import { fetchArxivHtmlAsMarkdown } from '@/lib/html-to-markdown';
 import { getCitationCount } from '@/lib/semantic-scholar';
 import { getAdminAuth } from '@/lib/firebase-admin';
+import { parseArxivCategories } from '@/lib/arxiv-categories';
+import { classifyTheme } from '@/lib/classify-theme';
 import type * as FirebaseFirestore from '@google-cloud/firestore';
 
 const USER_AGENT = 'Tsukineko-Grimoire/1.0 (arXiv collector; contact via GitHub)';
@@ -217,9 +219,7 @@ export async function POST(req: Request) {
           ? authorsRaw.map(a => a.name).slice(0, 5)
           : authorsRaw?.name ? [authorsRaw.name] : [];
 
-        const categoryRaw = entry.category;
-        const firstCat = Array.isArray(categoryRaw) ? categoryRaw[0] : categoryRaw;
-        const category = firstCat?.['@_term'] ?? firstCat?.['#text'] ?? '';
+        const { category, tags } = parseArxivCategories(entry.category);
 
         // 6. 日本語翻訳（失敗しても続行）
         const summaryJa = await translateToJapanese(summary);
@@ -262,7 +262,8 @@ export async function POST(req: Request) {
           category,
           arxivId,
           publishedAt,
-          tags: [],
+          tags,
+          theme: classifyTheme(title, summary, tags),
           metadata: { source: 'arxiv' },
         });
 
@@ -330,9 +331,7 @@ async function handleSingleById(
       ? authorsRaw.map(a => a.name).slice(0, 5)
       : authorsRaw?.name ? [authorsRaw.name] : [];
 
-    const categoryRaw = entry.category;
-    const firstCat = Array.isArray(categoryRaw) ? categoryRaw[0] : categoryRaw;
-    const category = firstCat?.['@_term'] ?? firstCat?.['#text'] ?? '';
+    const { category, tags } = parseArxivCategories(entry.category);
 
     // 日本語翻訳
     const summaryJa = await translateToJapanese(summary);
@@ -385,7 +384,8 @@ async function handleSingleById(
       category,
       arxivId: cleanId,
       publishedAt,
-      tags: [],
+      tags,
+      theme: classifyTheme(title, summary, tags),
       metadata: { source: 'arxiv' },
     });
 

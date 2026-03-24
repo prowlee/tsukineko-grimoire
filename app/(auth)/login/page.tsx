@@ -14,7 +14,7 @@ const GUEST_FEATURES = [
 
 const LOGIN_FEATURES = [
   { icon: '🛰️', label: '論文の追加', desc: 'arXivから論文をインデックス', soon: false },
-  { icon: '📌', label: 'ブックマーク', desc: '気になった論文を保存', soon: true },
+  { icon: '🗂', label: 'マイ本棚', desc: '保存した論文だけでAIと会話', soon: false },
   { icon: '📬', label: '週刊レポート', desc: '新着論文を受け取る', soon: true },
 ];
 

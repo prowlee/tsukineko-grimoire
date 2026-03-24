@@ -7,6 +7,8 @@ import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { MessageBubble } from './message-bubble';
+import { onAuthStateChanged } from 'firebase/auth';
+import { getClientAuth } from '@/lib/firebase';
 
 /** Agent Builder が返すスニペットに含まれる HTML タグを除去 */
 function stripHtml(text: string): string {
@@ -108,12 +110,20 @@ export function ChatInterface({ chatId }: ChatInterfaceProps) {
   const [loading, setLoading] = useState(false);
   const [selectedCitation, setSelectedCitation] = useState<Citation | null>(null);
   const [panelWidth, setPanelWidth] = useState(PANEL_DEFAULT);
+  const [userId, setUserId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isMobile = useIsMobile();
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(PANEL_DEFAULT);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(getClientAuth(), user => {
+      setUserId(user?.uid ?? null);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const onResizeStart = useCallback((e: React.MouseEvent) => {
     isDragging.current = true;
@@ -425,6 +435,7 @@ export function ChatInterface({ chatId }: ChatInterfaceProps) {
               <div className="h-full flex flex-col pl-1">
                 <CitationPanelContent
                   citation={selectedCitation}
+                  userId={userId}
                   onClose={() => setSelectedCitation(null)}
                   onAskAbout={(query) => { setSelectedCitation(null); handleDeepDive(query); }}
                 />
@@ -464,6 +475,7 @@ export function ChatInterface({ chatId }: ChatInterfaceProps) {
                 </div>
                 <CitationPanelContent
                   citation={selectedCitation}
+                  userId={userId}
                   onClose={() => setSelectedCitation(null)}
                   onAskAbout={(query) => { setSelectedCitation(null); handleDeepDive(query); }}
                 />
@@ -697,10 +709,12 @@ function ResultTableCard({ table }: { table: ResultTable }) {
 
 function CitationPanelContent({
   citation,
+  userId,
   onClose,
   onAskAbout,
 }: {
   citation: Citation;
+  userId: string | null;
   onClose: () => void;
   onAskAbout: (query: string) => void;
 }) {
@@ -712,6 +726,8 @@ function CitationPanelContent({
   const [figureIdx, setFigureIdx] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [resultTables, setResultTables] = useState<ResultTable[]>([]);
+  const [shelfLoading, setShelfLoading] = useState(false);
+  const [isShelved, setIsShelved] = useState(false);
 
   // Escape でライトボックスを閉じる
   useEffect(() => {
@@ -764,6 +780,54 @@ function CitationPanelContent({
   // "この論文についてグリモワールに聞く" で使うタイトル（日本語優先）
   const askTitle = enriched?.titleJa || citation.title || '';
 
+  // 本棚に追加・削除
+  const handleShelf = async () => {
+    if (!userId) { toast.error('本棚機能はログインが必要です'); return; }
+    if (!citation.arxivId) return;
+    setShelfLoading(true);
+    try {
+      if (isShelved) {
+        // arxivId だけでは削除できないため、/api/shelf で documentId を解決してから削除
+        const res = await fetch('/api/shelf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ arxivId: citation.arxivId }),
+        });
+        const data = await res.json();
+        if (data.message === 'already_shelved') {
+          // すでにある → documentId が返らないので別途検索は省略し、ページリロード不要で整合性は onSnapshot で取る
+          toast('すでに本棚に登録済みです');
+        }
+        // 削除は archive-library 側の shelvedIds で管理されているため、
+        // Citation Preview では「追加」のみに絞り、削除はマイ本棚ページから行う
+        setIsShelved(true);
+      } else {
+        const res = await fetch('/api/shelf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ arxivId: citation.arxivId }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          toast.error(data.error ?? '本棚への追加に失敗しました');
+        } else {
+          const data = await res.json();
+          if (data.message === 'already_shelved') {
+            toast('すでに本棚に追加済みです');
+            setIsShelved(true);
+          } else {
+            toast.success('マイ本棚に追加しました 🗂');
+            setIsShelved(true);
+          }
+        }
+      }
+    } catch {
+      toast.error('エラーが発生しました');
+    } finally {
+      setShelfLoading(false);
+    }
+  };
+
   return (
     <>
       {/* Header */}
@@ -814,6 +878,68 @@ function CitationPanelContent({
                 <span className="bg-purple-900/40 border border-purple-500/20 rounded px-1.5 py-0.5">
                   {enriched.category}
                 </span>
+              )}
+            </div>
+          )}
+
+          {/* ── 論文リンク + 本棚ボタン（著者行の直下） ── */}
+          {(enriched?.links || citation.arxivId) && (
+            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              {enriched?.links && (
+                <>
+                  <a
+                    href={enriched.links.abstract}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-full
+                      border border-purple-500/25 text-purple-300/70
+                      hover:text-purple-100 hover:border-purple-400/40
+                      text-xs transition-colors"
+                  >
+                    <BookOpen size={10} />
+                    <span>Abstract</span>
+                  </a>
+                  <a
+                    href={enriched.links.html}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-full
+                      border border-purple-500/25 text-purple-300/70
+                      hover:text-purple-100 hover:border-purple-400/40
+                      text-xs transition-colors"
+                  >
+                    <Globe size={10} />
+                    <span>HTML</span>
+                  </a>
+                  <a
+                    href={enriched.links.pdf}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-full
+                      border border-purple-500/25 text-purple-300/70
+                      hover:text-purple-100 hover:border-purple-400/40
+                      text-xs transition-colors"
+                  >
+                    <FileText size={10} />
+                    <span>PDF</span>
+                  </a>
+                </>
+              )}
+              {/* 本棚に保存ボタン */}
+              {citation.arxivId && (
+                <button
+                  onClick={handleShelf}
+                  disabled={shelfLoading || isShelved}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs
+                    border transition-all disabled:opacity-50
+                    ${isShelved
+                      ? 'bg-purple-700/25 border-purple-400/40 text-purple-300/90'
+                      : 'border-purple-500/25 text-purple-400/60 hover:bg-purple-700/20 hover:border-purple-400/45 hover:text-purple-300/80'
+                    }`}
+                >
+                  <span>🗂</span>
+                  <span>{isShelved ? '登録済み' : '本棚に保存'}</span>
+                </button>
               )}
             </div>
           )}
@@ -1097,51 +1223,6 @@ function CitationPanelContent({
             {resultTables.map((tbl, ti) => (
               <ResultTableCard key={ti} table={tbl} />
             ))}
-          </div>
-        )}
-
-        {/* 論文リンク（サブ扱い・横並び） */}
-        {enriched?.links && (
-          <div className="space-y-1.5">
-            <p className="text-purple-400/50 text-xs">論文を読む</p>
-            <div className="flex gap-2">
-              <a
-                href={enriched.links.abstract}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg
-                  bg-purple-900/20 border border-purple-500/20
-                  text-purple-300/70 hover:text-purple-100 hover:border-purple-400/40
-                  text-xs transition-colors"
-              >
-                <BookOpen size={11} />
-                <span>Abstract</span>
-              </a>
-              <a
-                href={enriched.links.html}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg
-                  bg-purple-900/20 border border-purple-500/20
-                  text-purple-300/70 hover:text-purple-100 hover:border-purple-400/40
-                  text-xs transition-colors"
-              >
-                <Globe size={11} />
-                <span>HTML</span>
-              </a>
-              <a
-                href={enriched.links.pdf}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg
-                  bg-purple-900/20 border border-purple-500/20
-                  text-purple-300/70 hover:text-purple-100 hover:border-purple-400/40
-                  text-xs transition-colors"
-              >
-                <FileText size={11} />
-                <span>PDF</span>
-              </a>
-            </div>
           </div>
         )}
 

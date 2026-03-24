@@ -7,7 +7,7 @@
 
 PORT="${1:-3002}"
 BASE_URL="http://localhost:${PORT}"
-SECRET="local-dev-secret"
+SECRET="${CRON_SECRET:-local-dev-secret}"
 MAX_PER_BATCH=10
 
 TOTAL_COLLECTED=0

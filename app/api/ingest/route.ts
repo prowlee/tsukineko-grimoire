@@ -1,9 +1,12 @@
 import { Storage } from '@google-cloud/storage';
+import { XMLParser } from 'fast-xml-parser';
 import { verifyAndGetUser } from '@/lib/auth-helpers';
 import { getAdminFirestore, FieldValue } from '@/lib/firebase-admin';
 import { translateToJapanese } from '@/lib/translate';
 import { pdfToMarkdown } from '@/lib/pdf-to-markdown';
 import { fetchArxivHtmlAsMarkdown } from '@/lib/html-to-markdown';
+import { parseArxivCategories } from '@/lib/arxiv-categories';
+import { classifyTheme } from '@/lib/classify-theme';
 
 const MAX_SIZE_MB = parseInt(process.env.MAX_UPLOAD_SIZE_MB ?? '100', 10);
 const ALLOWED_TYPES = ['application/pdf', 'text/markdown', 'text/plain', 'text/x-markdown'];
@@ -23,7 +26,7 @@ function extractArxivId(filename: string): string | null {
   return null;
 }
 
-// arXiv API からメタデータを取得
+// arXiv API からメタデータを取得（カテゴリ・tags は collector と同じ parseArxivCategories）
 async function fetchArxivMetadata(arxivId: string) {
   try {
     const res = await fetch(
@@ -33,18 +36,25 @@ async function fetchArxivMetadata(arxivId: string) {
     if (!res.ok) return null;
     const xml = await res.text();
 
-    const title = xml.match(/<title>(?!arXiv)([^<]+)<\/title>/)?.[1]?.trim() ?? '';
-    const summary = xml.match(/<summary>([^<]+)<\/summary>/)?.[1]?.trim().replace(/\s+/g, ' ') ?? '';
-    const published = xml.match(/<published>([^<]+)<\/published>/)?.[1]?.slice(0, 10) ?? '';
+    const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
+    const data = parser.parse(xml);
+    const rawEntry = data?.feed?.entry;
+    if (!rawEntry) return null;
+    const entry = Array.isArray(rawEntry) ? rawEntry[0] : rawEntry;
 
-    const authorMatches = [...xml.matchAll(/<name>([^<]+)<\/name>/g)];
-    const authors = authorMatches.map(m => m[1].trim()).slice(0, 5);
+    const title = String(entry.title ?? '').trim().replace(/\s+/g, ' ');
+    const summary = String(entry.summary ?? '').trim().replace(/\s+/g, ' ');
+    const publishedAt = String(entry.published ?? '').slice(0, 10);
 
-    const categoryMatch = xml.match(/term="([^"]+)"/);
-    const category = categoryMatch?.[1] ?? '';
+    const authorsRaw = entry.author;
+    const authors: string[] = Array.isArray(authorsRaw)
+      ? authorsRaw.map((a: { name: string }) => a.name).slice(0, 5)
+      : authorsRaw?.name ? [authorsRaw.name] : [];
+
+    const { category, tags } = parseArxivCategories(entry.category);
 
     if (!title) return null;
-    return { title, summary, authors, category, publishedAt: published };
+    return { title, summary, authors, category, tags, publishedAt };
   } catch {
     return null;
   }
@@ -98,13 +108,21 @@ export async function POST(req: Request) {
       summary: '',
       authors: [] as string[],
       category: '',
+      tags: [] as string[],
       publishedAt: '',
     };
 
     if (arxivId) {
       const arxivMeta = await fetchArxivMetadata(arxivId);
       if (arxivMeta) {
-        meta = arxivMeta;
+        meta = {
+          title: arxivMeta.title,
+          summary: arxivMeta.summary,
+          authors: arxivMeta.authors,
+          category: arxivMeta.category,
+          tags: arxivMeta.tags ?? [],
+          publishedAt: arxivMeta.publishedAt,
+        };
       }
     }
 
@@ -166,6 +184,7 @@ export async function POST(req: Request) {
     const parsedTags = manualTags
       ? manualTags.split(',').map(t => t.trim()).filter(Boolean)
       : [];
+    const mergedTags = [...new Set([...parsedTags, ...(meta.tags ?? [])])].filter(Boolean);
 
     // 6. Firestore にメタデータを保存
     const db = getAdminFirestore();
@@ -190,7 +209,8 @@ export async function POST(req: Request) {
       category: meta.category || manualDocType,
       publishedAt: meta.publishedAt || manualDate,
       arxivId: arxivId ?? '',
-      tags: parsedTags,
+      tags: mergedTags,
+      theme: classifyTheme(meta.title, manualSummary || meta.summary, mergedTags),
     });
 
     return Response.json({

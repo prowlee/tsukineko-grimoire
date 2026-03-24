@@ -42,6 +42,7 @@ interface ArxivPreview {
   authors: string[];
   summary: string;
   category: string;
+  tags?: string[];
   publishedAt: string;
 }
 
@@ -50,7 +51,7 @@ type EntryStatus =
   | { kind: 'preview';     data: ArxivPreview }
   | { kind: 'registering'; data: ArxivPreview }
   | { kind: 'registered';  data: ArxivPreview }
-  | { kind: 'duplicate';   arxivId: string }
+  | { kind: 'duplicate';   arxivId: string; title?: string }
   | { kind: 'not_found';   arxivId: string }
   | { kind: 'invalid';     raw: string }
   | { kind: 'error';       arxivId: string; message: string };
@@ -69,15 +70,16 @@ function parseArxivId(raw: string): string | null {
   return null;
 }
 
-function ArxivIdTab({ onSuccess }: { onSuccess?: () => void }) {
+function ArxivIdTab() {
   const [input, setInput] = useState('');
   const [entries, setEntries] = useState<EntryStatus[]>([]);
   const [searching, setSearching] = useState(false);
+  const [registeringAll, setRegisteringAll] = useState(false);
 
   const updateEntry = (i: number, next: EntryStatus) =>
     setEntries(prev => prev.map((e, idx) => idx === i ? next : e));
 
-  // Step 1: 一括検索
+  // Step 1: 一括検索（Firestore 既存チェック込み）
   const handleSearch = async () => {
     const lines = input
       .split(/[\n,]+/)
@@ -95,17 +97,20 @@ function ArxivIdTab({ onSuccess }: { onSuccess?: () => void }) {
     });
     setEntries(initial);
 
-    // 有効な ID を並列で取得
+    // 有効な ID を並列で取得（check=1 で書庫の重複を確認）
     await Promise.all(lines.map(async (raw, i) => {
       const id = parseArxivId(raw);
-      if (!id) return; // invalid は初期設定済み
+      if (!id) return;
       try {
-        const res = await fetch(`/api/arxiv-preview?id=${encodeURIComponent(id)}`);
+        const res = await fetch(`/api/arxiv-preview?id=${encodeURIComponent(id)}&check=1`);
         const data = await res.json();
         if (res.status === 404) {
           updateEntry(i, { kind: 'not_found', arxivId: id });
         } else if (!res.ok) {
           updateEntry(i, { kind: 'error', arxivId: id, message: data.error ?? '取得失敗' });
+        } else if (data.inLibrary) {
+          // 検索段階で書庫重複を検出
+          updateEntry(i, { kind: 'duplicate', arxivId: id, title: data.title });
         } else {
           updateEntry(i, { kind: 'preview', data });
         }
@@ -117,7 +122,7 @@ function ArxivIdTab({ onSuccess }: { onSuccess?: () => void }) {
     setSearching(false);
   };
 
-  // Step 2: 1件ずつ登録
+  // Step 2: 1件ずつ登録（Archive へは遷移しない）
   const handleRegister = async (i: number) => {
     const entry = entries[i];
     if (entry.kind !== 'preview') return;
@@ -135,17 +140,32 @@ function ArxivIdTab({ onSuccess }: { onSuccess?: () => void }) {
         return;
       }
       if (json.skipped > 0) {
-        updateEntry(i, { kind: 'duplicate', arxivId: data.arxivId });
+        updateEntry(i, { kind: 'duplicate', arxivId: data.arxivId, title: data.title });
       } else {
         updateEntry(i, { kind: 'registered', data });
-        onSuccess?.();
       }
     } catch {
       updateEntry(i, { kind: 'error', arxivId: data.arxivId, message: 'ネットワークエラー' });
     }
   };
 
+  // 全件まとめて登録
+  const handleRegisterAll = async () => {
+    setRegisteringAll(true);
+    const previewIndices = entries
+      .map((e, i) => ({ e, i }))
+      .filter(({ e }) => e.kind === 'preview')
+      .map(({ i }) => i);
+    for (const i of previewIndices) {
+      await handleRegister(i);
+    }
+    setRegisteringAll(false);
+  };
+
   const hasEntries = entries.length > 0;
+  const previewCount = entries.filter(e => e.kind === 'preview').length;
+  const TERMINAL = ['registered', 'duplicate', 'not_found', 'invalid', 'error'];
+  const allDone = hasEntries && entries.every(e => TERMINAL.includes(e.kind));
 
   return (
     <div className="space-y-4">
@@ -199,12 +219,33 @@ function ArxivIdTab({ onSuccess }: { onSuccess?: () => void }) {
             animate={{ opacity: 1, y: 0 }}
             className="space-y-2"
           >
+            {/* 全件登録ボタン（preview が2件以上あるとき） */}
+            {previewCount >= 2 && (
+              <button
+                onClick={handleRegisterAll}
+                disabled={registeringAll}
+                className="w-full glow-button py-2 text-xs disabled:opacity-50"
+              >
+                {registeringAll ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-3 h-3 border border-purple-300 border-t-transparent rounded-full animate-spin" />
+                    一括登録中...
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5">
+                    <BookOpen size={13} />
+                    {previewCount}件をまとめて登録
+                  </span>
+                )}
+              </button>
+            )}
+
             {entries.map((entry, i) => (
               <EntryCard key={i} entry={entry} onRegister={() => handleRegister(i)} />
             ))}
 
             {/* 全件完了後にやり直しボタン */}
-            {entries.every(e => e.kind === 'registered' || e.kind === 'duplicate' || e.kind === 'not_found' || e.kind === 'invalid' || e.kind === 'error') && (
+            {allDone && (
               <button
                 onClick={() => { setEntries([]); setInput(''); }}
                 className="w-full py-2 text-xs text-purple-400/50 hover:text-purple-300/70
@@ -285,7 +326,10 @@ function EntryCard({ entry, onRegister }: { entry: EntryStatus; onRegister: () =
         <span className="text-purple-400/50 text-sm shrink-0">✅</span>
         <div className="flex-1 min-w-0">
           <p className="text-purple-400/50 text-xs">すでに書庫に登録済みです</p>
-          <p className="text-purple-400/35 text-xs font-mono">{entry.arxivId}</p>
+          {entry.title
+            ? <p className="text-purple-300/50 text-xs truncate mt-0.5">{entry.title}</p>
+            : <p className="text-purple-400/35 text-xs font-mono">{entry.arxivId}</p>
+          }
         </div>
       </div>
     );
@@ -318,6 +362,14 @@ function EntryCard({ entry, onRegister }: { entry: EntryStatus; onRegister: () =
         {data.category && (
           <span className="bg-purple-900/40 border border-purple-500/20 rounded px-1.5 py-0.5">{data.category}</span>
         )}
+        {(data.tags ?? []).map(t => (
+          <span
+            key={t}
+            className="bg-purple-900/25 border border-purple-500/15 rounded px-1.5 py-0.5 text-purple-300/65"
+          >
+            #{t}
+          </span>
+        ))}
       </div>
       {data.summary && (
         <p className="text-purple-200/45 text-xs leading-relaxed line-clamp-2">{data.summary}</p>
@@ -558,7 +610,7 @@ export function FileUploader({ onSuccess }: FileUploaderProps) {
           className="glass-panel border border-purple-500/30 rounded-xl p-5"
         >
           {tab === 'arxiv'
-            ? <ArxivIdTab onSuccess={onSuccess} />
+            ? <ArxivIdTab />
             : <OtherDocTab onSuccess={onSuccess} />
           }
         </motion.div>

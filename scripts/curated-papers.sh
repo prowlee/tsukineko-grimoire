@@ -8,7 +8,7 @@
 
 PORT="${1:-3002}"
 BASE_URL="http://localhost:${PORT}"
-SECRET="local-dev-secret"
+SECRET="${CRON_SECRET:-local-dev-secret}"
 CSV="$(dirname "$0")/curated-ids.csv"
 
 if [[ ! -f "$CSV" ]]; then

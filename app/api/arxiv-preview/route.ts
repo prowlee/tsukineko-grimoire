@@ -1,4 +1,6 @@
 import { XMLParser } from 'fast-xml-parser';
+import { parseArxivCategories } from '@/lib/arxiv-categories';
+import { getAdminFirestore } from '@/lib/firebase-admin';
 
 const USER_AGENT = 'Tsukineko-Grimoire/1.0 (arXiv preview; contact via GitHub)';
 
@@ -8,13 +10,20 @@ export interface ArxivPreview {
   authors: string[];
   summary: string;
   category: string;
+  /** セカンダリ分類・大分野プレフィックス（collector / ingest と同じルール） */
+  tags: string[];
   publishedAt: string;
+  /** check=1 を渡したとき: 書庫にすでに登録済みか */
+  inLibrary?: boolean;
 }
 
-/** arXiv API からメタデータを取得して返す（登録はしない） */
+/** arXiv API からメタデータを取得して返す（登録はしない）
+ *  ?check=1 を付けると Firestore を確認して inLibrary を返す
+ */
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id')?.trim().replace(/v\d+$/, '');
+  const checkExists = searchParams.get('check') === '1';
 
   if (!id) {
     return Response.json({ error: 'arXiv ID が必要です' }, { status: 400 });
@@ -53,11 +62,23 @@ export async function GET(req: Request) {
       ? authorsRaw.map((a: { name: string }) => a.name).slice(0, 5)
       : authorsRaw?.name ? [authorsRaw.name] : [];
 
-    const categoryRaw = entry.category;
-    const firstCat = Array.isArray(categoryRaw) ? categoryRaw[0] : categoryRaw;
-    const category = firstCat?.['@_term'] ?? firstCat?.['#text'] ?? '';
+    const { category, tags } = parseArxivCategories(entry.category);
 
-    const preview: ArxivPreview = { arxivId: id, title, authors, summary, category, publishedAt };
+    let inLibrary: boolean | undefined;
+    if (checkExists) {
+      try {
+        const db = getAdminFirestore();
+        const snap = await db.collection('documents').where('arxivId', '==', id).limit(1).get();
+        inLibrary = !snap.empty;
+      } catch {
+        // Firestore エラー時は inLibrary を返さない（登録フローで判定）
+      }
+    }
+
+    const preview: ArxivPreview = {
+      arxivId: id, title, authors, summary, category, tags, publishedAt,
+      ...(checkExists ? { inLibrary: inLibrary ?? false } : {}),
+    };
     return Response.json(preview);
   } catch {
     return Response.json({ error: 'ネットワークエラーが発生しました' }, { status: 500 });

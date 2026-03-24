@@ -1,17 +1,22 @@
-import { verifyAndGetUser } from '@/lib/auth-helpers';
-import { getAdminFirestore, FieldValue } from '@/lib/firebase-admin';
+import { getAdminFirestore, FieldValue, getAdminAuth } from '@/lib/firebase-admin';
 import { getCachedAnswer, cacheAnswer } from '@/lib/query-cache';
 import { getSearchClient, buildServingConfigPath } from '@/lib/vertex-discovery';
 import { translateToEnglish } from '@/lib/translate';
 
 export async function POST(req: Request) {
-  // 1. 認証
-  let userId: string;
-  try {
-    const user = await verifyAndGetUser(req);
-    userId = user.uid;
-  } catch {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  // 1. 認証（/api/chat は public パスのため middleware が x-session-token を付与しない）
+  //    Cookie ヘッダーから session を直接読んで検証し、未ログインは 'guest' として続行。
+  let userId = 'guest';
+  const cookieHeader = req.headers.get('cookie') ?? '';
+  const sessionMatch = cookieHeader.match(/(?:^|;\s*)session=([^;]+)/);
+  const sessionToken = sessionMatch?.[1];
+  if (sessionToken) {
+    try {
+      const decoded = await getAdminAuth().verifySessionCookie(sessionToken, true);
+      userId = decoded.uid;
+    } catch {
+      // 無効なトークンはゲスト扱いで続行
+    }
   }
 
   const { question, history, chatId } = await req.json() as {
