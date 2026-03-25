@@ -33,7 +33,7 @@ export async function PATCH(
   if (Array.isArray(body.userTags)) {
     updates.userTags = body.userTags
       .filter((t: unknown): t is string => typeof t === 'string')
-      .map(t => t.trim().slice(0, 40))
+      .map((t: string) => t.trim().slice(0, 40))
       .filter(Boolean)
       .slice(0, 20);
   }
