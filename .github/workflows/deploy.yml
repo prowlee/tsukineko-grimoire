@@ -58,7 +58,16 @@ jobs:
           docker push ${{ env.ARTIFACT_REGISTRY }}/${{ env.IMAGE_REPO }}:${{ github.sha }}
           docker push ${{ env.ARTIFACT_REGISTRY }}/${{ env.IMAGE_REPO }}:latest
 
-      # ⑥ Cloud Run へデプロイ
+      # ⑥ Cloud Run のデフォルト SA に Secret Manager アクセス権を付与（冪等）
+      - name: Grant Secret Manager access to Cloud Run SA
+        run: |
+          PROJECT_NUMBER=$(gcloud projects describe ${{ env.PROJECT_ID }} --format='value(projectNumber)')
+          gcloud projects add-iam-policy-binding ${{ env.PROJECT_ID }} \
+            --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+            --role="roles/secretmanager.secretAccessor" \
+            --quiet
+
+      # ⑦ Cloud Run へデプロイ
       #    サーバーサイドの秘密情報は Secret Manager から参照する
       - name: Deploy to Cloud Run
         run: |
