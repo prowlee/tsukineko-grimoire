@@ -1,3 +1,14 @@
+# Cloud Run デプロイ（GitHub Actions → WIF 認証 → Docker build/push → gcloud run deploy）
+#
+# Secret Manager 連携:
+#   --set-secrets でランタイムに秘密を注入するため、下記 CLOUD_RUN_SERVICE_ACCOUNT に
+#   roles/secretmanager.secretAccessor を付与しておく必要があります。
+#   この Workflow ではプロジェクト IAM を変更しません。初回のみ GCP コンソールまたは gcloud で
+#   手動付与してください。
+#
+# 実行サービスアカウント:
+#   --service-account で明示指定する。Secret Manager・GCS・Vertex 等の権限はこの SA に付与する。
+
 name: Deploy to Cloud Run
 
 on:
@@ -12,6 +23,8 @@ env:
   SERVICE_NAME: tsukineko-grimoire
   ARTIFACT_REGISTRY: asia-northeast1-docker.pkg.dev
   IMAGE_REPO: tsukineko-grimoire-dev/tsukineko-grimoire/app
+  # Cloud Run コンテナの実行 SA（Secret / Storage / API 権限はここに集約）
+  CLOUD_RUN_SERVICE_ACCOUNT: 524413650510-compute@developer.gserviceaccount.com
 
 jobs:
   deploy:
@@ -58,17 +71,7 @@ jobs:
           docker push ${{ env.ARTIFACT_REGISTRY }}/${{ env.IMAGE_REPO }}:${{ github.sha }}
           docker push ${{ env.ARTIFACT_REGISTRY }}/${{ env.IMAGE_REPO }}:latest
 
-      # ⑥ Cloud Run のデフォルト SA に Secret Manager アクセス権を付与（冪等）
-      - name: Grant Secret Manager access to Cloud Run SA
-        run: |
-          PROJECT_NUMBER=$(gcloud projects describe ${{ env.PROJECT_ID }} --format='value(projectNumber)')
-          gcloud projects add-iam-policy-binding ${{ env.PROJECT_ID }} \
-            --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
-            --role="roles/secretmanager.secretAccessor" \
-            --quiet
-
-      # ⑦ Cloud Run へデプロイ
-      #    サーバーサイドの秘密情報は Secret Manager から参照する
+      # ⑥ Cloud Run へデプロイ（上記 SA で明示的に実行。Secret は Secret Manager 参照）
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
@@ -76,6 +79,7 @@ jobs:
             --region ${{ env.REGION }} \
             --platform managed \
             --allow-unauthenticated \
+            --service-account ${{ env.CLOUD_RUN_SERVICE_ACCOUNT }} \
             --memory 1Gi \
             --cpu 1 \
             --min-instances 0 \
