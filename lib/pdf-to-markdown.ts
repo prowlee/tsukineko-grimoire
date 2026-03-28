@@ -1,10 +1,6 @@
-// pdf-parse v2 は PDFParse クラスを export する（旧バージョンの関数 API から変更）
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { PDFParse } = require('pdf-parse') as {
-  PDFParse: new (options: { data: Buffer }) => {
-    getText(): Promise<{ text: string }>;
-  };
-};
+// pdf-parse のトップレベル import は Cloud Run で DOMMatrix クラッシュを引き起こすため禁止。
+// pdfToMarkdown() 内でのみ dynamic require する。
+// ENABLE_PDF_PARSE=true が設定されていない限り pdf-parse は呼ばない。
 
 export interface PaperMetadata {
   title: string;
@@ -16,27 +12,53 @@ export interface PaperMetadata {
   summaryJa: string;
 }
 
+export type ContentSource = 'html' | 'pdf' | 'metadata_only';
+export type ParseStatus = 'success' | 'fallback' | 'disabled' | 'failed';
+
 /**
  * PDF バッファをテキスト抽出してメタデータ注入型 Markdown に変換する。
- * Agent Builder がインデックス化しやすい構造にし、日本語クエリとの
- * マッチング精度を上げる。
+ *
+ * Cloud Run 本番では ENABLE_PDF_PARSE=true が設定されていないため、
+ * pdf-parse を呼ばずに metadata-only の Markdown を返す。
+ * これにより route のモジュール初期化時に DOMMatrix クラッシュが起きない。
  */
 export async function pdfToMarkdown(
   pdfBuffer: Buffer,
   meta: PaperMetadata
-): Promise<string> {
+): Promise<{ markdown: string; parseStatus: ParseStatus }> {
+  // 環境変数が明示的に true でなければ pdf-parse を一切呼ばない
+  if (process.env.ENABLE_PDF_PARSE !== 'true') {
+    console.log(`[collector] pdf parse disabled by env for ${meta.arxivId}`);
+    return { markdown: buildMarkdown(meta, ''), parseStatus: 'disabled' };
+  }
+
+  console.log(`[collector] pdf fallback entered for ${meta.arxivId}`);
+
   let bodyText = '';
+  let parseStatus: ParseStatus = 'failed';
 
   try {
+    // dynamic require — モジュール評価時ではなく実行時にのみ pdf-parse を読み込む
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { PDFParse } = require('pdf-parse') as {
+      PDFParse: new (options: { data: Buffer }) => {
+        getText(): Promise<{ text: string }>;
+      };
+    };
     const parser = new PDFParse({ data: pdfBuffer });
     const parsed = await parser.getText();
     bodyText = cleanPdfText(parsed.text);
+    parseStatus = 'success';
   } catch (err) {
-    console.warn('pdf-parse failed, using metadata-only markdown:', (err as Error).message?.slice(0, 80));
-    // PDF解析失敗時はメタデータのみのMarkdownを返す
+    console.error(
+      `[collector] pdf parse failed, using metadata-only markdown for ${meta.arxivId}:`,
+      (err as Error).message?.slice(0, 120)
+    );
+    parseStatus = 'failed';
+    // bodyText は空のまま → metadata-only markdown にフォールバック
   }
 
-  return buildMarkdown(meta, bodyText);
+  return { markdown: buildMarkdown(meta, bodyText), parseStatus };
 }
 
 /**

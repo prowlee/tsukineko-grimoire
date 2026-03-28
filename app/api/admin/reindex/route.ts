@@ -116,8 +116,9 @@ export async function POST(req: Request) {
       if (!markdown) {
         // HTML なし・PDF モード：GCS から PDF を取得してテキスト抽出
         const [pdfBuffer] = await bucket.file(filePath).download();
-        markdown = await pdfToMarkdown(Buffer.from(pdfBuffer), paperMeta);
-        source = 'pdf';
+        const result = await pdfToMarkdown(Buffer.from(pdfBuffer), paperMeta);
+        markdown = result.markdown;
+        source = result.parseStatus === 'success' ? 'pdf' : 'pdf'; // pdf モードは常に 'pdf' 扱い
       }
 
       // GCS に Markdown を保存（上書き）

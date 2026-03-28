@@ -165,15 +165,16 @@ export async function POST(req: Request) {
         let markdown = await fetchArxivHtmlAsMarkdown(arxivId, paperMeta);
         const source = markdown ? 'html' : 'pdf';
         if (!markdown) {
-          markdown = await pdfToMarkdown(buffer, paperMeta);
+          const result = await pdfToMarkdown(buffer, paperMeta);
+          markdown = result.markdown;
         }
         const mdDestination = destination.replace(/\.pdf$/i, '.md');
         await bucket.file(mdDestination).save(Buffer.from(markdown, 'utf-8'), {
           metadata: { contentType: 'text/markdown' },
         });
-        console.log(`ingest: markdown source=${source} for ${arxivId}`);
+        console.log(`[ingest] markdown source=${source} for ${arxivId}`);
       } catch (mdErr) {
-        console.warn('Markdown generation failed:', (mdErr as Error).message?.slice(0, 80));
+        console.warn('[ingest] markdown generation failed:', (mdErr as Error).message?.slice(0, 80));
       }
     }
 

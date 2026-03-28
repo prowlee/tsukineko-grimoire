@@ -229,20 +229,32 @@ export async function POST(req: Request) {
         const mdFilename = filename.replace(/\.pdf$/, '.md');
         const mdDestination = `incoming/${mdFilename}`;
         const paperMeta = { title, authors, category, publishedAt, arxivId, summary, summaryJa };
+        let contentSource: 'html' | 'pdf' | 'metadata_only' = 'metadata_only';
+        let parseStatus: 'success' | 'fallback' | 'disabled' | 'failed' = 'disabled';
         try {
           // HTML 版（arXiv HTML）を試みる
-          let markdown = await fetchArxivHtmlAsMarkdown(arxivId, paperMeta);
-          const source = markdown ? 'html' : 'pdf';
-          if (!markdown) {
-            // HTML なし・失敗時は PDF テキスト抽出にフォールバック
-            markdown = await pdfToMarkdown(pdfBuffer, paperMeta);
+          console.log(`[collector] html fetch start: ${arxivId}`);
+          const htmlMarkdown = await fetchArxivHtmlAsMarkdown(arxivId, paperMeta);
+          let finalMarkdown: string;
+          if (htmlMarkdown) {
+            console.log(`[collector] html extraction success: ${arxivId}`);
+            finalMarkdown = htmlMarkdown;
+            contentSource = 'html';
+            parseStatus = 'success';
+          } else {
+            console.log(`[collector] html extraction failed: ${arxivId}`);
+            console.log(`[collector] pdf fallback entered: ${arxivId}`);
+            const result = await pdfToMarkdown(pdfBuffer, paperMeta);
+            finalMarkdown = result.markdown;
+            parseStatus = result.parseStatus;
+            contentSource = result.parseStatus === 'success' ? 'pdf' : 'metadata_only';
           }
-          await bucket.file(mdDestination).save(Buffer.from(markdown, 'utf-8'), {
+          await bucket.file(mdDestination).save(Buffer.from(finalMarkdown, 'utf-8'), {
             metadata: { contentType: 'text/markdown' },
           });
-          console.log(`collector: markdown source=${source} for ${arxivId}`);
+          console.log(`[collector] markdown saved: arxivId=${arxivId} contentSource=${contentSource} parseStatus=${parseStatus}`);
         } catch (mdErr) {
-          console.warn(`Markdown generation failed for ${arxivId}:`, (mdErr as Error).message?.slice(0, 80));
+          console.error(`[collector] markdown generation failed for ${arxivId}:`, (mdErr as Error).message?.slice(0, 80));
         }
 
         // 8. Firestore に登録
@@ -264,6 +276,8 @@ export async function POST(req: Request) {
           publishedAt,
           tags,
           theme: classifyTheme(title, summary, tags),
+          contentSource,
+          parseStatus,
           metadata: { source: 'arxiv' },
         });
 
@@ -351,20 +365,33 @@ async function handleSingleById(
     const gcsPath = `gs://${process.env.GCS_BUCKET_NAME}/${destination}`;
 
     // HTML 優先で Markdown 変換して GCS に保存（失敗時は PDF フォールバック）
+    let contentSource: 'html' | 'pdf' | 'metadata_only' = 'metadata_only';
+    let parseStatus: 'success' | 'fallback' | 'disabled' | 'failed' = 'disabled';
     try {
       const paperMeta = { title, authors, category, publishedAt, arxivId: cleanId, summary, summaryJa };
-      let markdown = await fetchArxivHtmlAsMarkdown(cleanId, paperMeta);
-      const source = markdown ? 'html' : 'pdf';
-      if (!markdown) {
-        markdown = await pdfToMarkdown(pdfBuffer, paperMeta);
+      console.log(`[collector] html fetch start: ${cleanId}`);
+      const htmlMarkdown = await fetchArxivHtmlAsMarkdown(cleanId, paperMeta);
+      let finalMarkdown: string;
+      if (htmlMarkdown) {
+        console.log(`[collector] html extraction success: ${cleanId}`);
+        finalMarkdown = htmlMarkdown;
+        contentSource = 'html';
+        parseStatus = 'success';
+      } else {
+        console.log(`[collector] html extraction failed: ${cleanId}`);
+        console.log(`[collector] pdf fallback entered: ${cleanId}`);
+        const result = await pdfToMarkdown(pdfBuffer, paperMeta);
+        finalMarkdown = result.markdown;
+        parseStatus = result.parseStatus;
+        contentSource = result.parseStatus === 'success' ? 'pdf' : 'metadata_only';
       }
       const mdDestination = `incoming/${filename.replace(/\.pdf$/, '.md')}`;
-      await bucket.file(mdDestination).save(Buffer.from(markdown, 'utf-8'), {
+      await bucket.file(mdDestination).save(Buffer.from(finalMarkdown, 'utf-8'), {
         metadata: { contentType: 'text/markdown' },
       });
-      console.log(`collector(byId): markdown source=${source} for ${cleanId}`);
+      console.log(`[collector] markdown saved: arxivId=${cleanId} contentSource=${contentSource} parseStatus=${parseStatus}`);
     } catch (mdErr) {
-      console.warn(`Markdown generation failed for ${cleanId}:`, (mdErr as Error).message?.slice(0, 80));
+      console.error(`[collector] markdown generation failed for ${cleanId}:`, (mdErr as Error).message?.slice(0, 80));
     }
 
     // Firestore に登録
@@ -386,6 +413,8 @@ async function handleSingleById(
       publishedAt,
       tags,
       theme: classifyTheme(title, summary, tags),
+      contentSource,
+      parseStatus,
       metadata: { source: 'arxiv' },
     });
 
