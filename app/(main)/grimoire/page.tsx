@@ -6,14 +6,24 @@ export const dynamic = 'force-dynamic';
 // チャットIDは簡易的にセッションベースで生成（実装後はユーザーごとに管理）
 const DEFAULT_CHAT_ID = 'default';
 
-export default async function GrimoirePage({
+/** Next.js 14 では searchParams は同期オブジェクト（15 以降の Promise パターンは使わない） */
+function pickArxivId(
+  raw: string | string[] | undefined
+): string | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw === 'string') return raw;
+  if (Array.isArray(raw) && raw.length > 0 && typeof raw[0] === 'string') {
+    return raw[0];
+  }
+  return undefined;
+}
+
+export default function GrimoirePage({
   searchParams,
 }: {
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+  searchParams: { [key: string]: string | string[] | undefined };
 }) {
-  const params = await searchParams;
-  const arxivIdParam = params.arxivId;
-  const initialArxivId = Array.isArray(arxivIdParam) ? arxivIdParam[0] : arxivIdParam;
+  const initialArxivId = pickArxivId(searchParams.arxivId);
 
   return (
     <div className="h-[calc(100dvh-52px)] relative">
