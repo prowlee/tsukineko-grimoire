@@ -1,5 +1,11 @@
 import { verifyAndGetUser } from '@/lib/auth-helpers';
 import { getAdminFirestore } from '@/lib/firebase-admin';
+import {
+  getCachedSnippetTranslation,
+  normalizeSnippetSourceText,
+  saveSnippetTranslation,
+  SNIPPET_TARGET_LANG_JA,
+} from '@/lib/translation-snippet-cache';
 import { translateToJapanese } from '@/lib/translate';
 
 interface CitationRequest {
@@ -80,13 +86,25 @@ export async function POST(req: Request) {
     }
   }
 
-  // スニペットを並列で日本語翻訳（最大 3 件）
+  // スニペットを並列で日本語翻訳（最大 3 件）。Firestore にキャッシュがあれば API を呼ばない
   const targetSnippets = snippets.slice(0, 3);
   const translatedSnippets = await Promise.all(
     targetSnippets.map(async en => {
       try {
-        const ja = await translateToJapanese(en);
-        return { en, ja: ja || en };
+        const normalized = normalizeSnippetSourceText(en);
+        if (!normalized) {
+          return { en, ja: en };
+        }
+        const cached = await getCachedSnippetTranslation(db, en, SNIPPET_TARGET_LANG_JA);
+        if (cached !== null) {
+          return { en, ja: cached };
+        }
+        const ja = await translateToJapanese(normalized);
+        const out = ja || en;
+        if (ja) {
+          await saveSnippetTranslation(db, en, SNIPPET_TARGET_LANG_JA, ja);
+        }
+        return { en, ja: out };
       } catch {
         return { en, ja: en };
       }
