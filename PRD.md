@@ -1,75 +1,75 @@
-# 📜 Tsukineko Grimoire: Complete Development Specification
+# 📜 Tsukineko Grimoire：完整开发规范
 
-## 🎯 Project Overview
+## 🎯 项目概述
 
-**Project Name**: Tsukineko Grimoire (月ねこグリモワール)
+**项目名称**: Tsukineko Grimoire (月ねこグリモワール)
 
-**Concept**: "知識を貪り、創造の魔法を紡ぐ、自分専用の魔導書"  
+**概念**: "吞噬知识，编织创造魔法，专属于自己的魔导书"
 A Personal Grimoire that devours knowledge and casts creation spells.
 
-**Primary Goal**: Google Cloud "Trial credit for GenAI App Builder" ($1,000 / ¥148,035) を最大限活用し、RAGベースの知識管理・コンテンツ作成アプリケーションを構築する。
+**主要目标**: 最大限度地利用 Google Cloud "Trial credit for GenAI App Builder" ($1,000 / ¥148,035)，构建基于 RAG 的知识管理与内容创作应用程序。
 
-**Development Timeline**: 約2ヶ月（有効期限: 2026年9月6日まで余裕あり）
+**开发周期**: 约2个月（有效期至2026年9月6日，时间充裕）
 
-**Core Value Proposition**:
-- **Total Recall**: 数千のPDF/Docsから瞬時に情報を検索（Enterprise-grade semantic search）
-- **Content Alchemy**: 生データ（論文）を構造化された記事（Gold）に変換
-- **Coupon Optimization**: Vertex AI Agent Builder (Discovery Engine API) のみを使用してクーポンを確実に消費
+**核心价值主张**:
+- **完全召回**: 从数千份 PDF/文档中瞬间检索信息（企业级语义搜索）
+- **内容炼金术**: 将原始数据（论文）转化为结构化文章（黄金）
+- **优惠券优化**: 仅使用 Vertex AI Agent Builder (Discovery Engine API) 确保消耗优惠券
 
 ---
 
-## 💰 CRITICAL CONSTRAINT: クーポン利用の絶対的制約
+## 💰 关键约束：优惠券使用的绝对限制
 
-### ⚠️ 最重要ルール
+### ⚠️ 最重要规则
 
-このプロジェクトの最大目的は **Vertex AI Agent Builder のクーポンを消費すること** です。
-以下のルールを **絶対に** 守ってください。違反すると高額請求が発生します。
+本项目的最大目的是**消耗 Vertex AI Agent Builder 的优惠券**。
+请**绝对**遵守以下规则。违反将产生高额费用。
 
-### ✅ 許可されるAPI・ライブラリ (ALLOWLIST)
+### ✅ 允许的 API / 库 (ALLOWLIST)
 
-**必ずこれらのみを使用:**
+**必须仅使用以下这些:**
 
 ```typescript
-// ✅ CORRECT: Agent Builder 経由のみ
+// ✅ 正确：仅通过 Agent Builder
 import { ConversationalSearchServiceClient } from '@google-cloud/discoveryengine';
 import { SearchServiceClient } from '@google-cloud/discoveryengine';
 import { DocumentServiceClient } from '@google-cloud/discoveryengine';
 ```
 
-**使用可能なサービス:**
-- **Library**: `@google-cloud/discoveryengine`
-- **Service**: Vertex AI Agent Builder (Discovery Engine API)
-- **Methods**:
-  - `ConversationalSearchServiceClient` (会話型検索)
-  - `SearchServiceClient` (通常検索)
-  - `DocumentServiceClient` (ドキュメント管理)
+**可用的服务:**
+- **库**: `@google-cloud/discoveryengine`
+- **服务**: Vertex AI Agent Builder (Discovery Engine API)
+- **方法**:
+  - `ConversationalSearchServiceClient` (对话式搜索)
+  - `SearchServiceClient` (常规搜索)
+  - `DocumentServiceClient` (文档管理)
 
-### ❌ 禁止されるAPI・ライブラリ (BLOCKLIST)
+### ❌ 禁止的 API / 库 (BLOCKLIST)
 
-**絶対に使用禁止:**
+**绝对禁止使用:**
 
 ```typescript
-// ❌ FORBIDDEN: これらは高額請求の原因
+// ❌ 禁止：这些会导致高额费用
 import { VertexAI } from '@google-cloud/vertexai';
 import { GenerativeModel } from '@google-cloud/vertexai';
 import * as aiplatform from '@google-cloud/aiplatform';
 
-// ❌ これらのメソッドも禁止
+// ❌ 这些方法也禁止
 const model = vertex.getGenerativeModel();
 const result = await model.generateContent();
 const stream = await model.streamGenerateContent();
 ```
 
-**禁止サービス:**
-- `@google-cloud/vertexai` パッケージ全体
-- Gemini API の直接呼び出し
+**禁止的服务:**
+- `@google-cloud/vertexai` 整个包
+- 直接调用 Gemini API
 - Vertex AI Generative AI API
 - Text-to-Speech API
 - Video Intelligence API
 
-### 🔍 コードレビューチェックリスト
+### 🔍 代码审查清单
 
-すべてのコミット前に確認:
+每次提交前确认:
 
 ```bash
 grep -r "from '@google-cloud/vertexai'" .
@@ -79,9 +79,9 @@ grep -r "generateContent" .
 
 ---
 
-## 🛠️ Technology Stack
+## 🛠️ 技术栈
 
-### Frontend
+### 前端
 
 ```json
 {
@@ -96,7 +96,7 @@ grep -r "generateContent" .
 }
 ```
 
-### Backend / Infrastructure
+### 后端 / 基础设施
 
 ```json
 {
@@ -110,7 +110,7 @@ grep -r "generateContent" .
 }
 ```
 
-### Development Tools
+### 开发工具
 
 ```json
 {
@@ -123,7 +123,7 @@ grep -r "generateContent" .
 
 ---
 
-## 🏗️ System Architecture
+## 🏗️ 系统架构
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -162,18 +162,18 @@ grep -r "generateContent" .
 
 ---
 
-## ⚡ Feature Requirements (The Spells)
+## ⚡ 功能需求 (魔法)
 
-### 🔮 Feature 1: Mana Ingestion (Document Upload)
+### 🔮 功能 1：魔力摄取 (文档上传)
 
-**Description**: PDFやMarkdownファイルを魔導書に取り込む
+**描述**: 将 PDF 或 Markdown 文件导入魔导书
 
-**UI Specifications**:
-- Drag & Drop ゾーンにグロウエフェクト
-- アップロード中はプログレスバー + パーティクルアニメーション
-- 完了時トースト通知: "Knowledge Devoured"
+**UI 规范**:
+- 拖放区域带有光晕效果
+- 上传时显示进度条 + 粒子动画
+- 完成时显示通知："知识已被吞噬"
 
-**Technical Implementation**:
+**技术实现**:
 
 ```typescript
 // app/api/ingest/route.ts
@@ -230,18 +230,18 @@ export async function POST(req: Request) {
 }
 ```
 
-**Constraints**:
-- 最大ファイルサイズ: 100MB
-- 対応形式: PDF, Markdown, Text
-- GCS Auto-sync により Agent Builder が自動インデックス化（24-48時間）
+**约束条件**:
+- 最大文件大小: 100MB
+- 支持格式: PDF, Markdown, Text
+- GCS 自动同步使 Agent Builder 自动建立索引（24-48小时）
 
 ---
 
-### 🧙‍♂️ Feature 2: Grimoire Search (RAG Chat)
+### 🧙‍♂️ 功能 2：魔导书搜索 (RAG 聊天)
 
-**Description**: 魔導書に質問して知識を引き出す
+**描述**: 向魔导书提问，获取知识
 
-**UI Layout**:
+**UI 布局**:
 ```
 ┌─────────────────┬─────────────────┐
 │  Chat History   │  Citation       │
@@ -256,7 +256,7 @@ export async function POST(req: Request) {
 └─────────────────┴─────────────────┘
 ```
 
-**Implementation** (クーポン厳守・全修正適用):
+**实现** (严格遵守优惠券规则・已全部修正):
 
 ```typescript
 // app/api/chat/route.ts
@@ -275,7 +275,7 @@ export async function POST(req: Request) {
 
   const { question, conversationId, chatId } = await req.json();
 
-  // ✅ Location-aware endpoint
+  // ✅ 支持位置感知的端点
   const location = process.env.VERTEX_AI_LOCATION!; // 'global'
   const apiEndpoint = location === 'global'
     ? 'discoveryengine.googleapis.com'
@@ -283,12 +283,12 @@ export async function POST(req: Request) {
 
   const client = new ConversationalSearchServiceClient({ apiEndpoint });
 
-  // ✅ Short IDs only in env vars
+  // ✅ 环境变量中仅使用短 ID
   const servingConfig = client.projectLocationCollectionEngineServingConfigPath(
     process.env.GOOGLE_CLOUD_PROJECT_ID!,
     location,
     'default_collection',
-    process.env.VERTEX_AI_ENGINE_ID!, // Short ID: my-engine_1234567890
+    process.env.VERTEX_AI_ENGINE_ID!, // 短 ID: my-engine_1234567890
     'default_config'
   );
 
@@ -330,14 +330,14 @@ export async function POST(req: Request) {
     console.error('Agent Builder API error:', error);
     const err = error as { code?: string };
     const errorMessages: Record<string, string> = {
-      RESOURCE_EXHAUSTED: '魔力が不足しています。しばらくお待ちください',
-      NOT_FOUND: 'その知識は魔導書に記録されていません',
-      INVALID_ARGUMENT: '呪文の詠唱に失敗しました',
-      UNAUTHENTICATED: '魔導書へのアクセスが拒否されました',
+      RESOURCE_EXHAUSTED: '魔力不足。请稍等片刻',
+      NOT_FOUND: '该知识未记录在魔导书中',
+      INVALID_ARGUMENT: '咒语咏唱失败',
+      UNAUTHENTICATED: '魔导书访问被拒绝',
     };
 
     return Response.json(
-      { error: errorMessages[err.code ?? ''] || '予期せぬ魔法の干渉が発生しました' },
+      { error: errorMessages[err.code ?? ''] || '发生意外的魔法干扰' },
       { status: 500 }
     );
   }
@@ -346,11 +346,11 @@ export async function POST(req: Request) {
 
 ---
 
-### 📜 Feature 3: Spell Casting (Article Generation)
+### 📜 功能 3：咒语咏唱 (文章生成)
 
-**Description**: 検索結果から構造化された技術記事を生成
+**描述**: 从搜索结果生成结构化的技术文章
 
-**Important**: Gemini APIは使わない！Agent Builderの要約機能のみ使用
+**重要**: 不使用 Gemini API！仅使用 Agent Builder 的摘要功能
 
 ```typescript
 // app/api/cast-article/route.ts
@@ -366,7 +366,7 @@ export async function POST(req: Request) {
 
   const { topic } = await req.json();
 
-  // ✅ Location-aware endpoint
+  // ✅ 支持位置感知的端点
   const location = process.env.VERTEX_AI_LOCATION!;
   const apiEndpoint = location === 'global'
     ? 'discoveryengine.googleapis.com'
@@ -378,31 +378,31 @@ export async function POST(req: Request) {
     process.env.GOOGLE_CLOUD_PROJECT_ID!,
     location,
     'default_collection',
-    process.env.VERTEX_AI_DATA_STORE_ID!, // Short ID only
+    process.env.VERTEX_AI_DATA_STORE_ID!, // 仅使用短 ID
     'default_config'
   );
 
   const [response] = await client.search({
     servingConfig,
-    query: `詳細な技術情報とコード例を含む: ${topic}`,
+    query: `包含详细技术信息和代码示例: ${topic}`,
     pageSize: 10,
     contentSearchSpec: {
       summarySpec: {
         summaryResultCount: 10,
         includeCitations: true,
         modelPromptSpec: {
-          preamble: `次のトピックについて、技術記事の詳細な構成案を提示してください：
+          preamble: `请针对以下主题提出技术文章的详细结构方案：
 
-トピック: ${topic}
+主题: ${topic}
 
-以下を含めてください:
-- タイトル案
-- 見出し構成（H2, H3レベル）
-- 各セクションで扱うべき具体的な内容
-- 重要なキーワードとコンセプト
-- 実装例やコードスニペットの提案
+请包括:
+- 标题方案
+- 标题构成（H2、H3 级别）
+- 各章节应涉及的具体内容
+- 重要的关键词和概念
+- 实现示例和代码片段的建议
 
-Zenn/Qiita形式で読みやすく構成してください。`,
+请以 Zenn/Qiita 风格进行易于阅读的构成。`,
         },
       },
     },
@@ -441,22 +441,22 @@ ${refs.map((c, i) => `${i + 1}. [${c.title || 'Untitled'}](${c.uri || '#'})`).jo
 
 ---
 
-*この記事は Tsukineko Grimoire によって生成されました (${timestamp})*
+*本文由 Tsukineko Grimoire 生成 (${timestamp})*
 `;
 }
 ```
 
 ---
 
-### 🛰️ Feature 4: Auto Summon (arXiv Auto Collection)
+### 🛰️ 功能 4：自动召唤 (arXiv 自动收集)
 
-**Description**: arXivから最新論文を自動ダウンロード
+**描述**: 从 arXiv 自动下载最新论文
 
-**Specifications**:
-- 実行タイミング: 毎日深夜2時 (JST)
-- キーワード: "LLM", "RAG", "Agent", "Transformer"
-- 取得件数: 最新5件/日
-- レートリミット対策: 各ダウンロード間に3秒待機
+**规范**:
+- 执行时间: 每天凌晨2点 (日本时间)
+- 关键词: "LLM", "RAG", "Agent", "Transformer"
+- 获取数量: 每天最多5篇最新论文
+- 限流措施: 每次下载之间等待3秒
 
 ```typescript
 // app/api/collector/route.ts
@@ -543,7 +543,7 @@ export async function GET(req: Request) {
 
         collected.push({ title: entry.title, arxivId });
       } catch (error) {
-        console.error(`Failed to download ${arxivId}:`, error);
+        console.error(`下载失败 ${arxivId}:`, error);
       }
     }
 
@@ -581,11 +581,11 @@ async function downloadWithRetry(
 
 ---
 
-## 🎨 UI/UX Design Guidelines
+## 🎨 UI/UX 设计指南
 
-### Theme: Magic × Cyberpunk
+### 主题: 魔法 × 赛博朋克
 
-**Color Palette**:
+**调色板**:
 
 ```css
 :root {
@@ -598,20 +598,20 @@ async function downloadWithRetry(
 }
 ```
 
-**Typography**:
-- Body: Inter (Clean, Modern)
-- Headers: Cinzel (Magical feel) - Google Fonts で読み込み
-- Code: JetBrains Mono
+**字体**:
+- 正文: Inter (干净、现代)
+- 标题: Cinzel (魔法感) - 从 Google Fonts 加载
+- 代码: JetBrains Mono
 
-**Animation Effects**:
+**动画效果**:
 
 ```tsx
-// Glassmorphism
+// 玻璃态
 <div className="bg-black/60 backdrop-blur-xl border border-purple-500/20 rounded-lg">
   {children}
 </div>
 
-// Levitation
+// 悬浮
 <motion.div
   animate={{ y: [0, -8, 0] }}
   transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
@@ -619,13 +619,13 @@ async function downloadWithRetry(
   {children}
 </motion.div>
 
-// Glow on Hover
+// 悬停光晕
 <button className="hover:shadow-[0_0_20px_rgba(167,139,250,0.6)] transition-shadow duration-300">
   {children}
 </button>
 ```
 
-**Particle Background**:
+**粒子背景**:
 
 ```tsx
 // components/magic-ui/particle-bg.tsx
@@ -699,27 +699,27 @@ export function ParticleBackground() {
 }
 ```
 
-**Terminology (Magic Theme)**:
+**术语 (魔法主题)**:
 
-| Standard | Grimoire |
+| 标准 | Grimoire |
 |----------|----------|
-| Upload | Ingest (取り込む) |
-| Search | Consult (問う) |
-| Generate | Cast (詠唱する) |
-| Library | Archive (書庫) |
-| Document | Scroll (巻物) |
-| Answer | Revelation (啓示) |
+| Upload | Ingest (摄取) |
+| Search | Consult (询问) |
+| Generate | Cast (咏唱) |
+| Library | Archive (书库) |
+| Document | Scroll (卷轴) |
+| Answer | Revelation (启示) |
 
-**Responsive Layout**:
+**响应式布局**:
 
 ```tsx
 // app/(main)/grimoire/page.tsx
 <div className="flex flex-col md:flex-row min-h-screen">
-  {/* Chat - Full width on mobile, 60% on tablet+ */}
+  {/* 聊天 - 移动端全宽，平板以上60% */}
   <div className="w-full md:w-[60%] lg:w-[55%] border-r border-purple-500/20">
     <ChatInterface />
   </div>
-  {/* Preview - Hidden on mobile, 40% on tablet+ */}
+  {/* 预览 - 移动端隐藏，平板以上40% */}
   <div className="hidden md:block md:w-[40%] lg:w-[45%]">
     <CitationPreview />
   </div>
@@ -728,7 +728,7 @@ export function ParticleBackground() {
 
 ---
 
-## 📁 Directory Structure
+## 📁 目录结构
 
 ```
 tsukineko-grimoire/
@@ -804,7 +804,7 @@ tsukineko-grimoire/
 
 ---
 
-## 📊 Database Schema (Firestore)
+## 📊 数据库结构 (Firestore)
 
 ### `users/{uid}`
 ```typescript
@@ -879,7 +879,7 @@ interface QueryCache {
 
 ---
 
-## 🔐 Security Requirements
+## 🔐 安全要求
 
 ### Firestore Security Rules
 
@@ -938,9 +938,9 @@ gcloud secrets add-iam-policy-binding VERTEX_AI_ENGINE_ID \
 
 ---
 
-## 🔐 Authentication Implementation Details
+## 🔐 认证实现细节
 
-### 1. Middleware (Edge Runtime対応 - Cookie確認のみ)
+### 1. Middleware (Edge Runtime 対応 - Cookie確認のみ)
 
 ```typescript
 // middleware.ts
@@ -957,12 +957,12 @@ export async function middleware(request: NextRequest) {
 
   if (isPublicPath) return NextResponse.next();
 
-  // Cookie の存在確認のみ (firebase-admin は使わない - Edge Runtime制約)
+  // 仅检查 Cookie 是否存在 (不使用 firebase-admin - Edge Runtime 限制)
   if (!session?.value) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  // セッショントークンを後段の API Route に渡す
+  // 将会话令牌传递给后续的 API Route
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-session-token', session.value);
 
@@ -974,9 +974,9 @@ export const config = {
 };
 ```
 
-**重要**: 実際のトークン検証は各 API Route で `verifyAndGetUser()` を使って行います。
+**重要**: 实际的令牌验证将在每个 API Route 中使用 `verifyAndGetUser()` 进行。
 
-### 2. Firebase Admin SDK (FieldValue export付き)
+### 2. Firebase Admin SDK (附带 FieldValue 导出)
 
 ```typescript
 // lib/firebase-admin.ts
@@ -996,12 +996,12 @@ export const auth = admin.auth();
 export const firestore = admin.firestore();
 export const storage = admin.storage();
 
-// FieldValue を export（各ファイルで admin を import せずに使える）
+// 导出 FieldValue（无需在各文件中导入 admin 即可使用）
 export const FieldValue = admin.firestore.FieldValue;
 export type Timestamp = admin.firestore.Timestamp;
 ```
 
-### 3. Auth Helper (セッション検証)
+### 3. Auth Helper (会话验证)
 
 ```typescript
 // lib/auth-helpers.ts
@@ -1009,8 +1009,8 @@ import { NextRequest } from 'next/server';
 import { auth } from './firebase-admin';
 
 /**
- * セッショントークンを検証してユーザー情報を返す
- * すべての認証が必要な API Route で使用する
+ * 验证会话令牌并返回用户信息
+ * 在所有需要认证的 API Route 中使用
  */
 export async function verifyAndGetUser(
   request: NextRequest | Request
@@ -1117,10 +1117,10 @@ export default function LoginPage() {
       if (response.ok) {
         router.push('/grimoire');
       } else {
-        setError('ログインに失敗しました');
+        setError('登录失败');
       }
     } catch {
-      setError('ログインエラーが発生しました');
+      setError('发生登录错误');
     } finally {
       setLoading(false);
     }
@@ -1130,7 +1130,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
       <div className="bg-black/60 backdrop-blur-xl border border-purple-500/20 rounded-lg p-8 max-w-md w-full">
         <h1 className="text-3xl font-bold text-white mb-2 text-center">🌙 Tsukineko Grimoire</h1>
-        <p className="text-purple-300 text-center mb-8">知識を貪り、魔法を紡ぐ</p>
+        <p className="text-purple-300 text-center mb-8">吞噬知识，编织魔法</p>
 
         <button
           onClick={handleGoogleSignIn}
@@ -1138,7 +1138,7 @@ export default function LoginPage() {
           className="w-full py-3 rounded-lg bg-purple-700 hover:bg-purple-600 text-white font-semibold
             hover:shadow-[0_0_20px_rgba(167,139,250,0.6)] transition-all duration-300 disabled:opacity-50"
         >
-          {loading ? '召喚中...' : 'Sign in with Google'}
+          {loading ? '召唤中...' : 'Sign in with Google'}
         </button>
 
         {error && <p className="text-red-400 mt-4 text-center text-sm">{error}</p>}
@@ -1150,7 +1150,7 @@ export default function LoginPage() {
 
 ---
 
-## 🌍 Environment Variables
+## 🌍 环境变量
 
 ### `.env.local`
 
@@ -1220,7 +1220,7 @@ MAX_UPLOAD_SIZE_MB=100
 
 ---
 
-## 🚀 Deployment Configuration
+## 🚀 部署配置
 
 ### 1. Next.js Configuration for Cloud Run
 
@@ -1349,9 +1349,9 @@ jobs:
 
 ---
 
-## 🤖 Vertex AI Agent Builder - Complete Setup Guide
+## 🤖 Vertex AI Agent Builder - 完整设置指南
 
-### ⚠️ 重要: Location は必ず `global`
+### ⚠️ 重要: 位置必须为 `global`
 
 ### Step 1: Enable Required APIs
 
@@ -1369,7 +1369,7 @@ gcloud services enable \
 3. Configure:
    ```
    Name: tsukineko-grimoire-datastore
-   Location: global  ← 必ず global を選択
+   Location: global  ← 必须选择 global
    Content Type: Unstructured documents
    ```
 4. Set GCS path: `gs://tsukineko-grimoire-archive/**/*.pdf`
@@ -1381,7 +1381,7 @@ gcloud services enable \
    Include metadata: Yes
    Auto-sync frequency: Every 24 hours
    ```
-6. **Copy Data Store ID (短いIDのみ)**: 例 `my-datastore_1234567890`
+6. **Copy Data Store ID (仅短 ID)**: 例 `my-datastore_1234567890`
 
 ### Step 3: Create Search App (Location: global)
 
@@ -1389,7 +1389,7 @@ gcloud services enable \
 2. Configure:
    ```
    Name: tsukineko-grimoire-search
-   Location: global  ← Data Store と同じ location
+   Location: global  ← 与 Data Store 相同的 location
    ```
 3. Link to Data Store from Step 2
 4. Advanced configurations:
@@ -1398,7 +1398,7 @@ gcloud services enable \
    Result diversification: Enabled
    Spell correction: Enabled
    ```
-5. **Copy Engine ID (短いIDのみ)**: 例 `my-engine_1234567890`
+5. **Copy Engine ID (仅短 ID)**: 例 `my-engine_1234567890`
 
 ### Step 4: Enable Conversational Search
 
@@ -1426,9 +1426,9 @@ curl -X POST \
 ### Step 6: Get IDs for .env.local
 
 ```bash
-# ✅ .env.local には短いIDのみを記載
-# ❌ NG: VERTEX_AI_ENGINE_ID=projects/123/locations/global/.../engines/my-engine_123
-# ✅ OK: VERTEX_AI_ENGINE_ID=my-engine_1234567890
+# ✅ .env.local 中仅填写短 ID
+# ❌ 错误: VERTEX_AI_ENGINE_ID=projects/123/locations/global/.../engines/my-engine_123
+# ✅ 正确: VERTEX_AI_ENGINE_ID=my-engine_1234567890
 
 VERTEX_AI_LOCATION=global
 VERTEX_AI_ENGINE_ID=my-engine_1234567890
@@ -1438,14 +1438,14 @@ VERTEX_AI_DATA_STORE_ID=my-datastore_1234567890
 ### Sync Timing
 
 ```
-GCS Upload → Indexing完了:
+GCS Upload → 索引完成:
 ├─ Auto-sync (daily): 24-48 hours
 ├─ Manual import: 10-30 minutes
 └─ Real-time (Enterprise): 5-10 minutes
 
-推奨:
-- Development: Manual import で速く反映
-- Production: Auto-sync で自動運用
+建议:
+- Development: 使用手动导入以快速反映
+- Production: 使用自动同步以自动化运行
 ```
 
 ### Manual Import
@@ -1459,7 +1459,7 @@ gcloud alpha discovery-engine documents import \
 
 ---
 
-## 📝 Implementation Priority
+## 📝 实现优先级
 
 ### Phase 1: Foundation (Week 1-2)
 
@@ -1472,7 +1472,7 @@ gcloud alpha discovery-engine documents import \
 **Day 3-4:**
 - Firebase Authentication setup
 - Google Sign-in implementation
-- `middleware.ts` (Edge Runtime対応版)
+- `middleware.ts` (Edge Runtime compatible version)
 - Basic layout with magical theme
 
 **Day 5-7:**
@@ -1521,17 +1521,17 @@ gcloud alpha discovery-engine documents import \
 
 ---
 
-## ⚠️ Development Rules
+## ⚠️ 开发规则
 
-1. **Coupon Constraint**: Every AI feature MUST use `@google-cloud/discoveryengine`
-2. **Type Safety**: TypeScript strict mode, no `any` types
-3. **Error Handling**: All async wrapped in try-catch, magical error messages
-4. **Security**: Never expose server-side env vars, session verified in API routes
-5. **Location**: Agent Builder は必ず `global` location、short IDのみ使用
+1. **优惠券限制**: 每个 AI 功能必须使用 `@google-cloud/discoveryengine`
+2. **类型安全**: TypeScript 严格模式，禁止使用 `any` 类型
+3. **错误处理**: 所有异步操作包裹在 try-catch 中，使用魔法风格错误消息
+4. **安全性**: 绝不暴露服务端环境变量，在 API 路由中验证会话
+5. **位置**: Agent Builder 必须使用 `global` 位置，仅使用短 ID
 
 ---
 
-## 💸 Cost Optimization
+## 💸 成本优化
 
 ### Query Caching with User Isolation
 
@@ -1600,7 +1600,7 @@ export async function cacheAnswer(question: string, userId: string, answer: unkn
 
 ---
 
-## 🧪 Testing Strategy
+## 🧪 测试策略
 
 ### Unit Tests (Vitest)
 
@@ -1619,7 +1619,7 @@ describe('Vertex Discovery', () => {
   it('should handle errors gracefully', async () => {
     await expect(
       queryGrimoire('', 'test-user-id')
-    ).rejects.toThrow('呪文の詠唱に失敗しました');
+    ).rejects.toThrow('咒语咏唱失败');
   });
 });
 ```
@@ -1649,7 +1649,7 @@ test('complete chat flow', async ({ page }) => {
 
 ---
 
-## 📚 Initial Setup Commands
+## 📚 初始设置命令
 
 ### 1. Create Project
 
@@ -1735,7 +1735,7 @@ gcloud scheduler jobs create http arxiv-collector \
 
 ---
 
-## 🔧 GCS Sync Lag UX
+## 🔧 GCS 同步延迟用户体验
 
 ```typescript
 // components/features/file-uploader.tsx (Firestore listener)
@@ -1759,8 +1759,8 @@ export function useIndexingStatus(userId: string) {
         if (change.type === 'modified') {
           const doc = change.doc.data();
           if (doc.status === 'indexed') {
-            toast.success(`📚 "${doc.filename}" が検索可能になりました`, {
-              description: '魔導書に知識が刻まれました',
+            toast.success(`📚 "${doc.filename}" 已可搜索`, {
+              description: '知识已刻入魔导书',
             });
           }
         }
@@ -1774,7 +1774,7 @@ export function useIndexingStatus(userId: string) {
 
 ---
 
-## 📖 References
+## 📖 参考文档
 
 - [Vertex AI Agent Builder Docs](https://cloud.google.com/generative-ai-app-builder/docs)
 - [Discovery Engine API Reference](https://cloud.google.com/discovery-engine/docs/reference)
@@ -1787,22 +1787,22 @@ export function useIndexingStatus(userId: string) {
 
 ---
 
-## 🎯 Success Criteria
+## 🎯 成功标准
 
-**Project is complete when:**
+**项目完成条件:**
 
-1. ✅ All 4 features working (Ingest, Search, Cast, Summon)
-2. ✅ Agent Builder coupon usage confirmed
-3. ✅ No `@google-cloud/vertexai` violations
-4. ✅ UI matches Magic × Cyberpunk theme
-5. ✅ Deployed to Cloud Run
-6. ✅ Tests passing
-7. ✅ Firebase Auth + session cookies working
-8. ✅ arXiv auto-collection running daily
-9. ✅ Query caching reducing API costs
+1. ✅ 所有 4 个功能正常工作 (摄取、搜索、咏唱、召唤)
+2. ✅ 确认使用了 Agent Builder 优惠券
+3. ✅ 无 `@google-cloud/vertexai` 违规
+4. ✅ UI 符合魔法 × 赛博朋克主题
+5. ✅ 部署到 Cloud Run
+6. ✅ 测试通过
+7. ✅ Firebase Auth + 会话 Cookie 正常工作
+8. ✅ arXiv 自动收集每日运行
+9. ✅ 查询缓存降低 API 成本
 
-**Coupon consumption target**: ¥140,000 - ¥148,035 by 2026年9月
+**优惠券消耗目标**: ¥140,000 - ¥148,035 直至 2026年9月
 
 ---
 
-*May your code be elegant and your bugs be few! 🌙✨*
+*愿你的代码优雅，bug 稀少！🌙✨*
